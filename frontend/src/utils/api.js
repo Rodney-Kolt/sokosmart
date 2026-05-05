@@ -105,9 +105,6 @@ export async function fetchVendors(category = null) {
 
 const RECENT_KEY = "sokoni_recent_searches";
 
-/**
- * Save a search term to the recent searches list (max 10).
- */
 export function saveRecentSearch(term) {
   try {
     const existing = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
@@ -116,13 +113,51 @@ export function saveRecentSearch(term) {
   } catch { /* ignore */ }
 }
 
-/**
- * Get the list of recent search terms.
- */
 export function getRecentSearches() {
   try {
     return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
   } catch {
     return [];
   }
+}
+
+// ── Feature 1: Vendor status ──────────────────────────────────────────────
+
+export async function updateVendorStatus(vendorOwnerId, status) {
+  const { data } = await api.put("/vendor/status", {
+    vendor_owner_id: vendorOwnerId,
+    status,
+  });
+  return data;
+}
+
+// ── Feature 2: Orders ─────────────────────────────────────────────────────
+
+export async function getOrderStatus(orderId) {
+  const { data } = await api.get(`/order/${orderId}`);
+  return data.order;
+}
+
+export async function updateOrderStatus(orderId, status) {
+  const { data } = await api.put(`/order/${orderId}/status`, { status });
+  return data;
+}
+
+export async function getVendorOrders(vendorId) {
+  const { data } = await api.get(`/vendor/${vendorId}/orders`);
+  return data.orders || [];
+}
+
+// ── Feature 3: Reviews ────────────────────────────────────────────────────
+
+export async function submitReview(payload) {
+  const { data } = await api.post(`/order/${payload.order_id}/review`, payload);
+  return data;
+}
+
+// ── Feature 4: Unread count ───────────────────────────────────────────────
+
+export async function getUnreadCount(userId, role = "consumer") {
+  const { data } = await api.get("/unread-count", { params: { user_id: userId, role } });
+  return data.count || 0;
 }

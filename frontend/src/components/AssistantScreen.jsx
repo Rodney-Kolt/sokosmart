@@ -11,6 +11,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import VendorCard from "./VendorCard";
 import QuickReply from "./QuickReply";
+import OrderCard from "./OrderCard";
+import RatingModal from "./RatingModal";
 import { sendChatMessage, requestService, saveRecentSearch } from "../utils/api";
 import {
   startListening, speak, stopSpeaking,
@@ -60,6 +62,7 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
   const [serverWaking, setServerWaking] = useState(false);
   const [pendingVendor, setPendingVendor] = useState(null);
   const [serviceMsg, setServiceMsg] = useState("");
+  const [ratingOrder, setRatingOrder] = useState(null); // order to rate
 
   const historyRef     = useRef([]);
   const bottomRef      = useRef(null);
@@ -164,10 +167,18 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
     if (!serviceMsg.trim() || !pendingVendor) return;
     setIsLoading(true);
     try {
-      await requestService(userId, pendingVendor.id, serviceMsg.trim(), displayName);
-      setMessages((prev) => [...prev,
+      const result = await requestService(userId, pendingVendor.id, serviceMsg.trim(), displayName);
+      const orderId = result?.order_id;
+      setMessages((prev) => [
+        ...prev,
         newMsg("user", "text", serviceMsg.trim()),
-        newMsg("assistant", "text", `✅ Request sent to **${pendingVendor.vname}**! They'll reply shortly.`),
+        // Show order tracking card if we got an order_id back
+        ...(orderId
+          ? [newMsg("assistant", "order_card", `✅ Request sent to **${pendingVendor.vname}**! Track your order below:`, {
+              orderId,
+              vendorName: pendingVendor.vname,
+            })]
+          : [newMsg("assistant", "text", `✅ Request sent to **${pendingVendor.vname}**! They'll reply shortly.`)]),
       ]);
       setServiceMsg("");
       setPendingVendor(null);
@@ -226,6 +237,17 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
             <QuickReply buttons={msg.buttons} onSelect={sendMessage} />
           )}
 
+          {/* Order tracking card */}
+          {msg.type === "order_card" && msg.orderId && (
+            <div className="mt-2 w-full">
+              <OrderCard
+                orderId={msg.orderId}
+                vendorName={msg.vendorName}
+                onRate={(order) => setRatingOrder(order)}
+              />
+            </div>
+          )}
+
           {/* Service request input */}
           {msg.type === "service_request" && pendingVendor && (
             <div className="mt-2 w-full flex gap-2">
@@ -265,6 +287,7 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
   // RENDER
   // ─────────────────────────────────────────────────────────────────────
   return (
+    <>
     <div
       className="flex-1 flex flex-col overflow-hidden"
       style={{ display: visible ? "flex" : "none" }}
@@ -473,5 +496,22 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
         </div>
       )}
     </div>
+
+    {/* Rating modal – rendered outside the scroll container */}
+    {ratingOrder && (
+      <RatingModal
+        order={ratingOrder}
+        vendorName={ratingOrder.vendor_name || "Vendor"}
+        consumerId={userId}
+        onClose={() => setRatingOrder(null)}
+        onSubmitted={() => {
+          setMessages((prev) => [
+            ...prev,
+            newMsg("assistant", "text", "⭐ Thank you for your review! It helps the community."),
+          ]);
+        }}
+      />
+    )}
+    </>
   );
 }

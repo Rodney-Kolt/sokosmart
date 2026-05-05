@@ -5,7 +5,7 @@ Connects consumers with nearby vendors via AI-powered chat.
 
 import os
 import json
-import asyncio
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -20,59 +20,55 @@ from db_utils import (
     get_conversation,
     save_vendor_reply,
     get_vendor_profile,
+    update_vendor_status,
+    create_order,
+    get_order,
+    update_order_status,
+    get_vendor_orders,
+    create_review,
+    get_unread_count_for_consumer,
+    get_unread_count_for_vendor,
 )
 
 load_dotenv()
 
-app = FastAPI(title="Sokoni Chat API", version="1.0.0")
+app = FastAPI(title="Sokoni Chat API", version="2.0.0")
 
-# ---------------------------------------------------------------------------
-# CORS – allow the Vercel frontend (and localhost for dev)
-# ---------------------------------------------------------------------------
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,https://*.vercel.app",
-).split(",")
-
+# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # tighten in production if needed
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# Location dictionary – maps common Kampala area names → (lat, lng)
-# ---------------------------------------------------------------------------
+# ── Location map ──────────────────────────────────────────────────────────────
 LOCATION_MAP = {
-    "wandegeya":   (0.3394,  32.5706),
-    "nakawa":      (0.3390,  32.6110),
-    "kisasi":      (0.3667,  32.5833),
-    "old kampala": (0.3136,  32.5811),
-    "kalerwe":     (0.3600,  32.5700),
-    "ntinda":      (0.3500,  32.6200),
-    "bukoto":      (0.3450,  32.5950),
-    "kololo":      (0.3200,  32.5900),
-    "makerere":    (0.3350,  32.5680),
-    "mulago":      (0.3380,  32.5760),
-    "bwaise":      (0.3550,  32.5650),
-    "kawempe":     (0.3700,  32.5600),
-    "nansana":     (0.3800,  32.5300),
-    "kireka":      (0.3300,  32.6400),
-    "luzira":      (0.2900,  32.6300),
-    "muyenga":     (0.2900,  32.6000),
-    "bugolobi":    (0.3100,  32.6100),
-    "naguru":      (0.3300,  32.6000),
-    "kampala":     (0.3136,  32.5811),
+    "wandegeya":   (0.3394, 32.5706),
+    "nakawa":      (0.3390, 32.6110),
+    "kisasi":      (0.3667, 32.5833),
+    "old kampala": (0.3136, 32.5811),
+    "kalerwe":     (0.3600, 32.5700),
+    "ntinda":      (0.3500, 32.6200),
+    "bukoto":      (0.3450, 32.5950),
+    "kololo":      (0.3200, 32.5900),
+    "makerere":    (0.3350, 32.5680),
+    "mulago":      (0.3380, 32.5760),
+    "bwaise":      (0.3550, 32.5650),
+    "kawempe":     (0.3700, 32.5600),
+    "nansana":     (0.3800, 32.5300),
+    "kireka":      (0.3300, 32.6400),
+    "luzira":      (0.2900, 32.6300),
+    "muyenga":     (0.2900, 32.6000),
+    "bugolobi":    (0.3100, 32.6100),
+    "naguru":      (0.3300, 32.6000),
+    "kampala":     (0.3136, 32.5811),
 }
-
-DEFAULT_LAT = 0.3136
-DEFAULT_LNG = 32.5811
+DEFAULT_LAT, DEFAULT_LNG = 0.3136, 32.5811
 
 
-def resolve_location(location_str: str, user_lat: Optional[float], user_lng: Optional[float]):
-    """Return (lat, lng) from a location string or fall back to user coords."""
+def resolve_location(location_str: str, user_lat, user_lng):
     if location_str:
         key = location_str.strip().lower()
         for place, coords in LOCATION_MAP.items():
@@ -83,9 +79,8 @@ def resolve_location(location_str: str, user_lat: Optional[float], user_lng: Opt
     return (DEFAULT_LAT, DEFAULT_LNG)
 
 
-# ---------------------------------------------------------------------------
-# Request / Response models
-# ---------------------------------------------------------------------------
+# ── Pydantic models ───────────────────────────────────────────────────────────
+
 class ChatRequest(BaseModel):
     user_id: str
     message: str
@@ -107,9 +102,37 @@ class VendorReply(BaseModel):
     message: str
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
+class VendorStatusUpdate(BaseModel):
+    vendor_owner_id: str
+    status: str  # "open" | "busy" | "closed"
+
+
+class OrderStatusUpdate(BaseModel):
+    status: str  # "accepted" | "in_progress" | "ready" | "completed"
+
+
+class ReviewSubmit(BaseModel):
+    order_id: str
+    vendor_id: str
+    consumer_id: str
+    rating: int
+    review_text: Optional[str] = ""
+    voice_review_url: Optional[str] = ""
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
+@app.get("/")
+async def root():
+    return {"status": "OK", "service": "Sokoni Chat API"}
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "OK", "service": "Sokoni Chat API", "awake": True}
+
+
+# ── Vendor registration ───────────────────────────────────────────────────────
 
 @app.post("/vendor/register")
 async def register_vendor(
@@ -120,10 +143,7 @@ async def register_vendor(
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
 ):
-    """
-    Insert a new vendor record using the service role key (bypasses RLS).
-    Called by the frontend after Supabase Auth signup.
-    """
+    """Insert a new vendor record (bypasses RLS via service role key)."""
     try:
         from db_utils import supabase as sb
         result = sb.table("vendors").insert({
@@ -135,55 +155,48 @@ async def register_vendor(
             "longitude":   longitude,
             "rating":      4.0,
             "is_active":   True,
+            "status":      "open",
         }).execute()
         return {"success": True, "vendor": result.data[0] if result.data else {}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/")
-async def root():
-    return {"status": "OK", "service": "Sokoni Chat API"}
+# ── Feature 1: Vendor status toggle ──────────────────────────────────────────
+
+@app.put("/vendor/status")
+async def set_vendor_status(req: VendorStatusUpdate):
+    """Vendor updates their open/busy/closed status."""
+    if req.status not in ("open", "busy", "closed"):
+        raise HTTPException(status_code=400, detail="Invalid status value")
+    try:
+        ok = await update_vendor_status(req.vendor_owner_id, req.status)
+        return {"success": ok}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint – pinged by UptimeRobot every minute to keep Render awake.
-    """
-    return {"status": "OK", "service": "Sokoni Chat API", "awake": True}
-
+# ── Chat ──────────────────────────────────────────────────────────────────────
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """
-    Main chat endpoint.
-    1. Sends user message + history to Gemini.
-    2. Parses Gemini's response.
-    3. If Gemini returns a search_intent, queries Supabase for nearby vendors.
-    4. Returns either a text reply, quick-reply buttons, or a vendor list.
-    """
     try:
         ai_response_text = await get_gemini_response(
             user_message=req.message,
             conversation_history=req.conversation_history or [],
         )
 
-        # Try to parse as JSON (search_intent or quick_reply)
-        # Gemini sometimes wraps JSON in markdown fences or adds text before/after it
         parsed = None
-        clean = ai_response_text.strip()
+        clean  = ai_response_text.strip()
 
-        # 1. Strip markdown code fences (```json ... ``` or ``` ... ```)
+        # Strip markdown fences
         if "```" in clean:
-            import re
             fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, re.DOTALL)
             if fence_match:
                 clean = fence_match.group(1)
 
-        # 2. Extract the first {...} JSON block from anywhere in the response
+        # Extract first JSON block
         if not clean.startswith("{"):
-            import re
             json_match = re.search(r"\{.*\}", clean, re.DOTALL)
             if json_match:
                 clean = json_match.group(0)
@@ -193,21 +206,21 @@ async def chat(req: ChatRequest):
         except json.JSONDecodeError:
             pass
 
-        # ── Case 1: AI wants to search for vendors ──────────────────────────
+        # Case 1: search intent
         if parsed and parsed.get("type") == "search_intent":
-            category   = parsed.get("category", "")
-            location   = parsed.get("location", "")
+            category  = parsed.get("category", "")
+            location  = parsed.get("location", "")
+            only_open = parsed.get("only_open", False)
             reply_text = parsed.get("clarifying_reply", "Let me find that for you…")
 
             lat, lng = resolve_location(location, req.latitude, req.longitude)
-            vendors = await search_vendors(category=category, lat=lat, lng=lng, radius_km=5)
+            vendors  = await search_vendors(
+                category=category, lat=lat, lng=lng,
+                radius_km=5, only_open=only_open
+            )
 
             if vendors:
-                return {
-                    "type": "vendor_list",
-                    "reply": reply_text,
-                    "vendors": vendors,
-                }
+                return {"type": "vendor_list", "reply": reply_text, "vendors": vendors}
             else:
                 return {
                     "type": "text",
@@ -218,25 +231,28 @@ async def chat(req: ChatRequest):
                     ),
                 }
 
-        # ── Case 2: AI returns quick-reply buttons ───────────────────────────
+        # Case 2: quick reply
         if parsed and parsed.get("type") == "quick_reply":
             return parsed
 
-        # ── Case 3: AI returns plain text JSON {"type":"text","reply":"..."} ─
+        # Case 3: plain text JSON
         if parsed and parsed.get("type") == "text":
             return {"type": "text", "reply": parsed.get("reply", ai_response_text)}
 
-        # ── Case 4: Fallback – return raw text ───────────────────────────────
+        # Case 4: fallback
         return {"type": "text", "reply": ai_response_text}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Feature 2: Service request → creates order ───────────────────────────────
+
 @app.post("/request-service")
 async def request_service(req: ServiceRequest):
-    """Consumer sends a service request message to a vendor."""
+    """Consumer sends a service request. Creates a message AND an order."""
     try:
+        # Save the chat message (existing behaviour)
         msg_id = await save_message(
             consumer_id=req.consumer_id,
             vendor_id=req.vendor_id,
@@ -244,14 +260,110 @@ async def request_service(req: ServiceRequest):
             consumer_name=req.consumer_name,
             sender="consumer",
         )
-        return {"success": True, "message_id": msg_id}
+        # Also create a formal order
+        order = await create_order(
+            consumer_id=req.consumer_id,
+            vendor_id=req.vendor_id,
+            details=req.message,
+            consumer_name=req.consumer_name,
+        )
+        return {
+            "success":    True,
+            "message_id": msg_id,
+            "order_id":   order["id"] if order else None,
+            "order":      order,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/order/{order_id}")
+async def get_order_status(order_id: str):
+    """Consumer polls for order status updates."""
+    try:
+        order = await get_order(order_id)
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        return {"order": order}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/order/{order_id}/status")
+async def update_order(order_id: str, req: OrderStatusUpdate):
+    """Vendor updates the order status."""
+    valid = {"accepted", "in_progress", "ready", "completed"}
+    if req.status not in valid:
+        raise HTTPException(status_code=400, detail=f"Status must be one of {valid}")
+    try:
+        ok = await update_order_status(order_id, req.status)
+        return {"success": ok}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/vendor/{vendor_id}/orders")
+async def vendor_orders(vendor_id: str):
+    """Vendor fetches all their orders."""
+    try:
+        orders = await get_vendor_orders(vendor_id)
+        return {"orders": orders}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Feature 3: Reviews ────────────────────────────────────────────────────────
+
+@app.post("/order/{order_id}/review")
+async def submit_review(order_id: str, req: ReviewSubmit):
+    """Consumer submits a star rating + optional review after order completion."""
+    try:
+        # Verify order is completed
+        order = await get_order(order_id)
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if order["status"] != "completed":
+            raise HTTPException(status_code=400, detail="Order is not yet completed")
+
+        review = await create_review(
+            order_id=order_id,
+            vendor_id=req.vendor_id,
+            consumer_id=req.consumer_id,
+            rating=req.rating,
+            review_text=req.review_text or "",
+            voice_review_url=req.voice_review_url or "",
+        )
+        return {"success": True, "review": review}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Feature 4: Unread count ───────────────────────────────────────────────────
+
+@app.get("/unread-count")
+async def unread_count(user_id: str, role: str = "consumer"):
+    """
+    Returns unread message count for a user.
+    role: "consumer" | "vendor"
+    """
+    try:
+        if role == "vendor":
+            count = await get_unread_count_for_vendor(user_id)
+        else:
+            count = await get_unread_count_for_consumer(user_id)
+        return {"count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Existing endpoints ────────────────────────────────────────────────────────
+
 @app.get("/vendor/{vendor_id}/messages")
 async def get_messages(vendor_id: str):
-    """Vendor fetches all incoming service requests."""
     try:
         messages = await get_vendor_messages(vendor_id)
         return {"messages": messages}
@@ -261,7 +373,6 @@ async def get_messages(vendor_id: str):
 
 @app.get("/conversation/{consumer_id}/{vendor_id}")
 async def get_thread(consumer_id: str, vendor_id: str):
-    """Fetch the full conversation thread between a consumer and vendor."""
     try:
         thread = await get_conversation(consumer_id, vendor_id)
         return {"thread": thread}
@@ -271,7 +382,6 @@ async def get_thread(consumer_id: str, vendor_id: str):
 
 @app.post("/vendor/reply")
 async def vendor_reply(req: VendorReply):
-    """Vendor sends a reply to a consumer."""
     try:
         msg_id = await save_vendor_reply(
             vendor_id=req.vendor_id,
@@ -285,7 +395,6 @@ async def vendor_reply(req: VendorReply):
 
 @app.get("/vendor/{vendor_id}/profile")
 async def vendor_profile(vendor_id: str):
-    """Fetch vendor profile details."""
     try:
         profile = await get_vendor_profile(vendor_id)
         return {"profile": profile}

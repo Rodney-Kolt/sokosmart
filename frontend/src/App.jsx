@@ -1,28 +1,16 @@
 /**
  * App.jsx – Root component for Sokoni Chat.
  *
- * Layout:
- *   1. LoadingScreen (~2s splash)
- *   2. Main tabbed shell:
- *      ┌─────────────────────┐
- *      │  Tab content area   │
- *      ├─────────────────────┤
- *      │    BottomNav        │
- *      └─────────────────────┘
+ * Layout (Feature 5 – sticky nav):
+ *   The outer container is h-[100dvh] flex-col.
+ *   Tab content area is flex-1 overflow-hidden (each tab manages its own scroll).
+ *   BottomNav is flex-shrink-0 – always visible, never pushed off screen.
  *
- * Tabs: market | assistant | profile
- * VendorDashboard → separate full-screen route /dashboard (no bottom nav).
- *
- * AssistantScreen is ALWAYS mounted (display:none when inactive) so chat
- * state persists across tab switches.
- *
- * Market → Assistant handoff:
- *   MarketScreen calls onSendToAssistant(message) which sets pendingMessage
- *   in MainShell. When AssistantScreen becomes visible it fires the message
- *   automatically, then clears pendingMessage.
+ * Feature 4 – Notification badges:
+ *   Polls /unread-count every 10 seconds and passes counts to BottomNav.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import LoadingScreen   from "./components/LoadingScreen";
@@ -31,6 +19,7 @@ import MarketScreen    from "./components/MarketScreen";
 import AssistantScreen from "./components/AssistantScreen";
 import ProfileScreen   from "./components/ProfileScreen";
 import VendorDashboard from "./components/VendorDashboard";
+import { getUnreadCount } from "./utils/api";
 
 // ── Keep Render backend awake ─────────────────────────────────────────────
 function useWakeUpBackend() {
@@ -46,36 +35,58 @@ function useWakeUpBackend() {
 
 // ── Main tabbed shell ─────────────────────────────────────────────────────
 function MainShell() {
-  const [activeTab, setActiveTab]       = useState("assistant");
-  // Message queued from Market tab to be auto-sent in Assistant
+  const [activeTab, setActiveTab]           = useState("assistant");
   const [pendingMessage, setPendingMessage] = useState(null);
+  const [badges, setBadges]                 = useState({ assistant: 0 });
 
-  /**
-   * Called by MarketScreen when user taps "Chat with Vendor" or "Ask Assistant".
-   * Switches to the assistant tab and queues the message.
-   */
+  const userId = localStorage.getItem("sokoni_guest_id") || localStorage.getItem("sokoni_vendor_id") || "";
+  const role   = localStorage.getItem("sokoni_role") || "consumer";
+
+  // ── Feature 4: Poll unread count every 10 seconds ────────────────────
+  const pollUnread = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const count = await getUnreadCount(userId, role);
+      setBadges({ assistant: count });
+    } catch { /* silent */ }
+  }, [userId, role]);
+
+  useEffect(() => {
+    pollUnread();
+    const interval = setInterval(pollUnread, 10000);
+    return () => clearInterval(interval);
+  }, [pollUnread]);
+
+  // Clear badge when user opens the assistant tab
+  useEffect(() => {
+    if (activeTab === "assistant") {
+      setBadges((prev) => ({ ...prev, assistant: 0 }));
+    }
+  }, [activeTab]);
+
   function handleSendToAssistant(message) {
     setPendingMessage(message);
     setActiveTab("assistant");
   }
 
   return (
+    // Feature 5: h-full flex-col – content scrolls inside, nav stays fixed
     <div className="flex flex-col h-full">
-      <div className="flex-1 flex flex-col overflow-hidden relative">
 
-        {/* Market tab */}
+      {/* ── Tab content area – each tab manages its own internal scroll ── */}
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+
         {activeTab === "market" && (
           <MarketScreen onSendToAssistant={handleSendToAssistant} />
         )}
 
-        {/* Assistant – always mounted, hidden via CSS when not active */}
+        {/* AssistantScreen always mounted – hidden via CSS when inactive */}
         <AssistantScreen
           visible={activeTab === "assistant"}
           initialMessage={activeTab === "assistant" ? pendingMessage : null}
           onInitialMessageConsumed={() => setPendingMessage(null)}
         />
 
-        {/* Profile tab */}
         {activeTab === "profile" && (
           <ProfileScreen
             onNavigateDashboard={() => window.location.href = "/dashboard"}
@@ -83,7 +94,12 @@ function MainShell() {
         )}
       </div>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      {/* ── Bottom nav – always visible, never scrolls away ─────────────── */}
+      <BottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        badges={badges}
+      />
     </div>
   );
 }
@@ -97,11 +113,12 @@ export default function App() {
     <>
       {!appReady && <LoadingScreen onDone={() => setAppReady(true)} />}
 
+      {/* Feature 5: h-[100dvh] ensures the app never exceeds viewport height */}
       <div
-        className="min-h-screen flex justify-center bg-[#0d1117]"
+        className="flex justify-center bg-[#0d1117] h-[100dvh]"
         style={{ visibility: appReady ? "visible" : "hidden" }}
       >
-        <div className="w-full max-w-md bg-[#0d1117] min-h-screen flex flex-col shadow-2xl relative overflow-hidden">
+        <div className="w-full max-w-md bg-[#0d1117] h-full flex flex-col shadow-2xl overflow-hidden">
           <BrowserRouter>
             <Routes>
               {/* Vendor dashboard – full screen, no bottom nav */}

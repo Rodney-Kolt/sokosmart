@@ -1,8 +1,7 @@
 /**
  * BottomNav.jsx
- * Persistent bottom navigation bar with three tabs:
- *   Market | Assistant | Profile
- * Uses a simple activeTab prop + setActiveTab callback (no router needed).
+ * Persistent bottom navigation bar – Market | Assistant | Profile.
+ * Accepts a `badges` prop: { assistant: number } for unread notification counts.
  */
 
 import React from "react";
@@ -52,28 +51,36 @@ const TABS = [
   },
 ];
 
-export default function BottomNav({ activeTab, setActiveTab }) {
+export default function BottomNav({ activeTab, setActiveTab, badges = {} }) {
   return (
     <div className="flex-shrink-0 bg-[#161b22] border-t border-[#30363d] bottom-nav-safe">
       <div className="flex items-stretch h-16">
         {TABS.map((tab) => {
-          const isActive = activeTab === tab.id;
+          const isActive  = activeTab === tab.id;
+          const badgeCount = badges[tab.id] || 0;
+
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors relative ${
                 isActive ? "text-[#25D366]" : "text-gray-500 hover:text-gray-300"
               }`}
             >
-              {tab.icon(isActive)}
+              {/* Icon + badge wrapper */}
+              <div className="relative">
+                {tab.icon(isActive)}
+                {/* Red notification badge */}
+                {badgeCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 badge-pulse">
+                    {badgeCount > 99 ? "99+" : badgeCount}
+                  </span>
+                )}
+              </div>
+
               <span className={`text-[10px] font-medium ${isActive ? "text-[#25D366]" : "text-gray-500"}`}>
                 {tab.label}
               </span>
-              {/* Active indicator dot */}
-              {isActive && (
-                <div className="absolute bottom-1 w-1 h-1 rounded-full bg-[#25D366]" />
-              )}
             </button>
           );
         })}
