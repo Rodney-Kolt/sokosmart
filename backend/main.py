@@ -141,11 +141,16 @@ async def register_vendor(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/")
+async def root():
+    return {"status": "OK", "service": "Sokoni Chat API"}
+
+
+@app.get("/health")
 async def health_check():
     """
     Health check endpoint.
-    Use UptimeRobot (https://uptimerobot.com) to ping this every 5 minutes
-    so the Render free-tier dyno stays awake.
+    Pinged by UptimeRobot every 5 minutes to keep Render awake.
     """
     return {"status": "OK", "service": "Sokoni Chat API"}
 
