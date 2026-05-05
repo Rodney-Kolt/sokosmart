@@ -14,14 +14,20 @@ import VendorDashboard from "./components/VendorDashboard";
 
 // Ping the backend as soon as the app loads so Render wakes up
 // before the user sends their first message.
+// Also pings every 4 minutes to prevent Render free tier from sleeping.
 function useWakeUpBackend() {
   useEffect(() => {
     const url = import.meta.env.VITE_API_URL;
     if (!url) return;
-    fetch(`${url}/health`, { method: "GET" }).catch(() => {
-      // Silently retry after 20s if first ping fails (server still waking)
-      setTimeout(() => fetch(`${url}/health`).catch(() => {}), 20000);
-    });
+
+    const ping = () => fetch(`${url}/health`, { method: "GET" }).catch(() => {});
+
+    // Immediate ping on load
+    ping();
+
+    // Keep-alive ping every 4 minutes (Render sleeps after 15 min)
+    const interval = setInterval(ping, 4 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 }
 
