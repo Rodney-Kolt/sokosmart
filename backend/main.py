@@ -137,12 +137,23 @@ async def chat(req: ChatRequest):
         )
 
         # Try to parse as JSON (search_intent or quick_reply)
+        # Gemini sometimes wraps JSON in markdown fences or adds text before/after it
         parsed = None
-        # Strip markdown code fences if present
         clean = ai_response_text.strip()
-        if clean.startswith("```"):
-            lines = clean.split("\n")
-            clean = "\n".join(lines[1:-1]) if len(lines) > 2 else clean
+
+        # 1. Strip markdown code fences (```json ... ``` or ``` ... ```)
+        if "```" in clean:
+            import re
+            fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, re.DOTALL)
+            if fence_match:
+                clean = fence_match.group(1)
+
+        # 2. Extract the first {...} JSON block from anywhere in the response
+        if not clean.startswith("{"):
+            import re
+            json_match = re.search(r"\{.*\}", clean, re.DOTALL)
+            if json_match:
+                clean = json_match.group(0)
 
         try:
             parsed = json.loads(clean)
