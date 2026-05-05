@@ -97,3 +97,15 @@ html, body, #root {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ── TikTok feed: floating particle animation ───────────────────────────── */
+@keyframes float {
+  from { transform: translateY(0px) rotate(0deg); }
+  to   { transform: translateY(-12px) rotate(8deg); }
+}
+
+/* ── Bottom sheet slide-up ──────────────────────────────────────────────── */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}

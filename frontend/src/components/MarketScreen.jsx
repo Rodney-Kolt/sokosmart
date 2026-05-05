@@ -1,498 +1,695 @@
 /**
- * MarketScreen.jsx
- * AI-curated, feed-style hyperlocal marketplace.
+ * MarketScreen.jsx – TikTok/Reels-style full-screen vertical feed.
  *
- * Sections:
- *   1. "For You" header – personalised category chips + subtitle
- *   2. "Market Pulse" – full-width vendor story cards
- *   3. "Nearby Pulse" – horizontal strip of active vendor avatars
+ * Layout:
+ *   ┌──────────────────────────────┐
+ *   │  Sticky search + filter bar  │  ← always visible
+ *   ├──────────────────────────────┤
+ *   │  Snap-scroll feed            │  ← each slide = 100% height
+ *   │  ┌────────────────────────┐  │
+ *   │  │  Gradient media card   │  │
+ *   │  │  ┌──────────────────┐  │  │
+ *   │  │  │ Floating actions │  │  │
+ *   │  │  └──────────────────┘  │  │
+ *   │  │  Bottom overlay info   │  │
+ *   │  └────────────────────────┘  │
+ *   └──────────────────────────────┘
  *
- * Data: fetched directly from Supabase via fetchVendors().
- * Navigation: calls onSendToAssistant(message) to hand off to AssistantScreen.
+ * Each slide is scroll-snap-aligned so swiping snaps to the next vendor.
+ * A bottom sheet slides up with full vendor details + voice intro + quick replies.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { fetchVendors, getRecentSearches } from "../utils/api";
+import { fetchVendors, getRecentSearches, requestService } from "../utils/api";
+import { startListening, isRecognitionSupported } from "../utils/speech";
 
-// ── Category config ───────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = [
-  { label: "All",         emoji: "✨" },
-  { label: "fresh food",  emoji: "🥦" },
-  { label: "tailoring",   emoji: "🧵" },
-  { label: "salon",       emoji: "💇" },
-  { label: "phone repair",emoji: "📱" },
-  { label: "plumbing",    emoji: "🚿" },
-  { label: "bakery",      emoji: "🍞" },
-  { label: "cleaning",    emoji: "🧹" },
-  { label: "transport",   emoji: "🛵" },
-];
-
-// Category → gradient + emoji for the visual highlight strip
+// ── Category → visual config ──────────────────────────────────────────────
 const CATEGORY_VISUALS = {
-  "tailoring":    { gradient: "from-purple-900 to-pink-900",   emoji: "👗", bg: "#4a1d96" },
-  "phone repair": { gradient: "from-blue-900 to-cyan-900",     emoji: "📱", bg: "#1e3a5f" },
-  "electronics repair": { gradient: "from-blue-900 to-indigo-900", emoji: "🔧", bg: "#1e3a5f" },
-  "plumbing":     { gradient: "from-teal-900 to-green-900",    emoji: "🚿", bg: "#134e4a" },
-  "handyman":     { gradient: "from-orange-900 to-yellow-900", emoji: "🔨", bg: "#7c2d12" },
-  "fresh food":   { gradient: "from-green-900 to-lime-900",    emoji: "🥦", bg: "#14532d" },
-  "bakery":       { gradient: "from-amber-900 to-orange-900",  emoji: "🍞", bg: "#78350f" },
-  "cleaning":     { gradient: "from-sky-900 to-blue-900",      emoji: "🧹", bg: "#0c4a6e" },
-  "laundry":      { gradient: "from-sky-900 to-indigo-900",    emoji: "👕", bg: "#0c4a6e" },
-  "salon":        { gradient: "from-pink-900 to-rose-900",     emoji: "💇", bg: "#831843" },
-  "beauty":       { gradient: "from-pink-900 to-fuchsia-900",  emoji: "💄", bg: "#831843" },
-  "grocery":      { gradient: "from-green-900 to-emerald-900", emoji: "🛒", bg: "#14532d" },
-  "catering":     { gradient: "from-red-900 to-orange-900",    emoji: "🍽️", bg: "#7f1d1d" },
-  "photography":  { gradient: "from-gray-800 to-slate-900",    emoji: "📷", bg: "#1e293b" },
-  "tutoring":     { gradient: "from-indigo-900 to-violet-900", emoji: "📚", bg: "#312e81" },
-  "transport":    { gradient: "from-yellow-900 to-amber-900",  emoji: "🛵", bg: "#713f12" },
-  "mechanic":     { gradient: "from-zinc-800 to-gray-900",     emoji: "🔩", bg: "#27272a" },
+  "tailoring":          { grad: ["#4a1d96","#831843"], emoji: "👗", accent: "#c084fc" },
+  "phone repair":       { grad: ["#1e3a5f","#0c4a6e"], emoji: "📱", accent: "#38bdf8" },
+  "electronics repair": { grad: ["#1e3a5f","#312e81"], emoji: "🔧", accent: "#818cf8" },
+  "plumbing":           { grad: ["#134e4a","#14532d"], emoji: "🚿", accent: "#34d399" },
+  "handyman":           { grad: ["#7c2d12","#78350f"], emoji: "🔨", accent: "#fb923c" },
+  "fresh food":         { grad: ["#14532d","#365314"], emoji: "🥦", accent: "#86efac" },
+  "bakery":             { grad: ["#78350f","#7c2d12"], emoji: "🍞", accent: "#fbbf24" },
+  "cleaning":           { grad: ["#0c4a6e","#1e3a5f"], emoji: "🧹", accent: "#7dd3fc" },
+  "laundry":            { grad: ["#0c4a6e","#312e81"], emoji: "👕", accent: "#a5b4fc" },
+  "salon":              { grad: ["#831843","#701a75"], emoji: "💇", accent: "#f0abfc" },
+  "beauty":             { grad: ["#831843","#4a1d96"], emoji: "💄", accent: "#e879f9" },
+  "grocery":            { grad: ["#14532d","#134e4a"], emoji: "🛒", accent: "#4ade80" },
+  "catering":           { grad: ["#7f1d1d","#7c2d12"], emoji: "🍽️", accent: "#fca5a5" },
+  "photography":        { grad: ["#1e293b","#0f172a"], emoji: "📷", accent: "#94a3b8" },
+  "tutoring":           { grad: ["#312e81","#4a1d96"], emoji: "📚", accent: "#a5b4fc" },
+  "transport":          { grad: ["#713f12","#78350f"], emoji: "🛵", accent: "#fde68a" },
+  "mechanic":           { grad: ["#27272a","#18181b"], emoji: "🔩", accent: "#a1a1aa" },
 };
 
-function getCategoryVisual(category = "") {
+function getVisual(category = "") {
   const key = category.toLowerCase();
   for (const [k, v] of Object.entries(CATEGORY_VISUALS)) {
-    if (key.includes(k)) return v;
+    if (key.includes(k.split(" ")[0])) return v;
   }
-  return { gradient: "from-gray-800 to-slate-900", emoji: "🏪", bg: "#1e293b" };
+  return { grad: ["#1c2128","#0d1117"], emoji: "🏪", accent: "#25D366" };
 }
 
-// Simulate is_open based on vendor id (deterministic random)
-function simulateIsOpen(id = "") {
-  const n = id.charCodeAt(0) + id.charCodeAt(id.length - 1);
-  return n % 3 !== 0; // ~67% open
+// Deterministic helpers
+function isOpen(id = "") {
+  return (id.charCodeAt(0) + id.charCodeAt(id.length - 1)) % 3 !== 0;
 }
-
-// Simulate trust score (5–50 neighbours)
 function trustScore(id = "") {
-  const n = (id.charCodeAt(0) || 10) % 46;
-  return n + 5;
+  return ((id.charCodeAt(0) || 10) % 46) + 5;
 }
 
-// ── Highlight strip placeholder images ───────────────────────────────────
-function HighlightStrip({ category }) {
-  const visual = getCategoryVisual(category);
-  const items  = [visual.emoji, "⭐", "📍", "✅"];
+// ── Toast notification ────────────────────────────────────────────────────
+function Toast({ message, onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2800);
+    return () => clearTimeout(t);
+  }, [onDone]);
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-      {items.map((icon, i) => (
-        <div
-          key={i}
-          className={`flex-shrink-0 w-24 h-20 rounded-xl bg-gradient-to-br ${visual.gradient} flex items-center justify-center text-3xl border border-white/5`}
-        >
-          {icon}
-        </div>
-      ))}
+    <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-[#25D366] text-[#0d1117] font-semibold text-sm px-5 py-2.5 rounded-full shadow-xl fade-in">
+      {message}
     </div>
   );
 }
 
-// ── Voice intro player ────────────────────────────────────────────────────
-function VoiceIntroButton({ url }) {
-  const audioRef = useRef(null);
+// ── Voice intro player (compact) ──────────────────────────────────────────
+function VoicePlayer({ url }) {
+  const ref = useRef(null);
   const [playing, setPlaying] = useState(false);
-
   function toggle() {
-    if (!audioRef.current) return;
-    if (playing) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setPlaying(false);
-    } else {
-      audioRef.current.play();
-      setPlaying(true);
-    }
+    if (!ref.current) return;
+    if (playing) { ref.current.pause(); ref.current.currentTime = 0; setPlaying(false); }
+    else { ref.current.play(); setPlaying(true); }
   }
-
   return (
-    <div className="flex items-center gap-2">
-      <audio
-        ref={audioRef}
-        src={url}
-        onEnded={() => setPlaying(false)}
-        preload="none"
-      />
+    <>
+      <audio ref={ref} src={url} onEnded={() => setPlaying(false)} preload="none" />
       <button
         onClick={toggle}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
-          playing
-            ? "bg-[#25D366]/20 border-[#25D366] text-[#25D366]"
-            : "bg-[#30363d] border-[#444c56] text-gray-300 hover:border-[#25D366]"
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+          playing ? "bg-[#25D366]/20 border-[#25D366] text-[#25D366]" : "bg-black/40 border-white/20 text-white"
         }`}
       >
-        {/* Waveform icon */}
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-          {playing
-            ? <path d="M5 4a1 1 0 00-1 1v10a1 1 0 002 0V5a1 1 0 00-1-1zm4-2a1 1 0 00-1 1v14a1 1 0 002 0V3a1 1 0 00-1-1zm4 4a1 1 0 00-1 1v6a1 1 0 002 0V7a1 1 0 00-1-1z"/>
-            : <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"/>
-          }
-        </svg>
-        {playing ? "Playing…" : "Voice intro"}
+        {playing ? "⏸ Playing…" : "▶ Voice intro"}
       </button>
-    </div>
+    </>
   );
 }
 
 // ── Star rating ───────────────────────────────────────────────────────────
-function Stars({ rating }) {
-  const n     = parseFloat(rating) || 0;
-  const full  = Math.floor(n);
-  const empty = 5 - full;
+function Stars({ rating, size = "sm" }) {
+  const n = parseFloat(rating) || 0;
   return (
     <span className="flex items-center gap-0.5">
-      {"★".repeat(full)
-        .split("")
-        .map((s, i) => <span key={i} className="text-yellow-400 text-sm">{s}</span>)}
-      {"★".repeat(empty)
-        .split("")
-        .map((s, i) => <span key={i} className="text-gray-700 text-sm">{s}</span>)}
+      {[1,2,3,4,5].map((s) => (
+        <span key={s} className={`${size === "sm" ? "text-xs" : "text-base"} ${s <= Math.round(n) ? "text-yellow-400" : "text-gray-700"}`}>★</span>
+      ))}
       <span className="text-gray-400 text-xs ml-1">{n.toFixed(1)}</span>
     </span>
   );
 }
 
-// ── Vendor card ───────────────────────────────────────────────────────────
-function VendorStoryCard({ vendor, onChat, onAsk, index }) {
-  const isOpen  = simulateIsOpen(vendor.id || "");
-  const score   = trustScore(vendor.id || "");
-  const visual  = getCategoryVisual(vendor.category || "");
+// ── Bottom sheet ──────────────────────────────────────────────────────────
+function BottomSheet({ vendor, onClose, onChat, onAsk }) {
+  const visual = getVisual(vendor.category);
+  const open   = isOpen(vendor.id || "");
+  const score  = trustScore(vendor.id || "");
 
-  // Entrance animation delay based on index
-  const delay = `${index * 80}ms`;
+  // Quick-reply suggestions based on category
+  const quickReplies = [
+    `What's your price range?`,
+    `Are you available today?`,
+    `Do you offer delivery?`,
+    `How long does it take?`,
+  ];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
+
+      {/* Sheet */}
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50 bg-[#161b22] rounded-t-3xl border-t border-[#30363d] shadow-2xl"
+        style={{ animation: "slideUp 0.3s ease-out" }}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-[#30363d]" />
+        </div>
+
+        <div className="px-5 pb-8 overflow-y-auto max-h-[75vh]">
+          {/* Header */}
+          <div className="flex items-start gap-3 mb-4 pt-2">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0"
+              style={{ background: `linear-gradient(135deg, ${visual.grad[0]}, ${visual.grad[1]})` }}
+            >
+              {visual.emoji}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-white font-bold text-lg leading-tight">{vendor.name}</h2>
+              <p className="text-gray-400 text-sm capitalize">{vendor.category}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <Stars rating={vendor.rating} />
+                <span className="text-gray-600 text-xs">·</span>
+                <span className="text-gray-400 text-xs">👥 {score} neighbours</span>
+              </div>
+            </div>
+            {/* Status */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border flex-shrink-0 ${
+              open ? "bg-green-900/40 border-green-700/40" : "bg-gray-800/60 border-gray-700/40"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${open ? "bg-green-400 animate-pulse" : "bg-gray-500"}`} />
+              <span className={`text-xs font-medium ${open ? "text-green-400" : "text-gray-400"}`}>
+                {open ? "Open" : "Closed"}
+              </span>
+            </div>
+          </div>
+
+          {/* Description */}
+          <p className="text-gray-300 text-sm leading-relaxed mb-4">
+            {vendor.description || "Quality service near you. Tap Chat to get started."}
+          </p>
+
+          {/* Voice intro */}
+          {vendor.voice_intro_url && (
+            <div className="mb-4">
+              <VoicePlayer url={vendor.voice_intro_url} />
+            </div>
+          )}
+
+          {/* Quick replies */}
+          <div className="mb-5">
+            <p className="text-gray-500 text-xs font-medium uppercase tracking-wider mb-2">Quick questions</p>
+            <div className="flex flex-wrap gap-2">
+              {quickReplies.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => onAsk(vendor, q)}
+                  className="bg-[#0d1117] border border-[#30363d] hover:border-[#25D366] text-gray-300 text-xs px-3 py-1.5 rounded-full transition-colors"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => onChat(vendor)}
+              className="flex-1 flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#128C7E] text-[#0d1117] hover:text-white font-bold py-3.5 rounded-2xl text-sm transition-colors"
+            >
+              🛒 Request Service
+            </button>
+            <button
+              onClick={() => onAsk(vendor)}
+              className="flex-1 flex items-center justify-center gap-2 bg-[#30363d] hover:bg-[#444c56] text-white font-semibold py-3.5 rounded-2xl text-sm transition-colors border border-[#444c56]"
+            >
+              🤖 Ask Sokoni
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Full-screen vendor slide ──────────────────────────────────────────────
+function VendorSlide({ vendor, onAsk, onRequest, onOpenSheet, isActive }) {
+  const visual  = getVisual(vendor.category);
+  const open    = isOpen(vendor.id || "");
+  const score   = trustScore(vendor.id || "");
+  const initials = vendor.name?.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "??";
+
+  // Decorative floating particles (category-themed)
+  const particles = [visual.emoji, "⭐", "📍", visual.emoji, "✨"];
 
   return (
     <div
-      className="bg-[#161b22] border border-[#30363d] rounded-2xl overflow-hidden fade-in"
-      style={{ animationDelay: delay }}
+      className="relative w-full flex-shrink-0 overflow-hidden"
+      style={{
+        // Each slide takes exactly the feed height (set by parent)
+        scrollSnapAlign: "start",
+        scrollSnapStop: "always",
+        height: "100%",
+      }}
     >
-      {/* Category colour bar */}
-      <div className={`h-1.5 bg-gradient-to-r ${visual.gradient}`} />
+      {/* ── Background: gradient + floating emoji particles ─────────── */}
+      <div
+        className="absolute inset-0"
+        style={{ background: `linear-gradient(160deg, ${visual.grad[0]} 0%, ${visual.grad[1]} 60%, #0d1117 100%)` }}
+      />
 
-      <div className="p-4">
-        {/* Header row: name + open status */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-white font-bold text-base leading-tight truncate">
-              {vendor.name}
-            </h3>
-            <span className="text-gray-500 text-xs capitalize">{vendor.category}</span>
+      {/* Decorative large emoji (background) */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+        <span
+          className="text-[160px] opacity-10"
+          style={{ filter: "blur(2px)" }}
+        >
+          {visual.emoji}
+        </span>
+      </div>
+
+      {/* Floating particles */}
+      {particles.map((p, i) => (
+        <span
+          key={i}
+          className="absolute text-2xl opacity-20 pointer-events-none select-none"
+          style={{
+            top:  `${15 + i * 16}%`,
+            left: `${5 + i * 18}%`,
+            animation: `float ${3 + i * 0.7}s ease-in-out infinite alternate`,
+            animationDelay: `${i * 0.4}s`,
+          }}
+        >
+          {p}
+        </span>
+      ))}
+
+      {/* ── Centre hero emoji ────────────────────────────────────────── */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <div
+          className="w-32 h-32 rounded-3xl flex items-center justify-center text-7xl shadow-2xl mb-4"
+          style={{
+            background: `linear-gradient(135deg, ${visual.grad[0]}cc, ${visual.grad[1]}cc)`,
+            border: `2px solid ${visual.accent}33`,
+            boxShadow: `0 0 60px ${visual.accent}22`,
+          }}
+        >
+          {visual.emoji}
+        </div>
+        {/* Category label */}
+        <span
+          className="text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full"
+          style={{ background: `${visual.accent}22`, color: visual.accent, border: `1px solid ${visual.accent}44` }}
+        >
+          {vendor.category}
+        </span>
+      </div>
+
+      {/* ── Bottom gradient overlay ──────────────────────────────────── */}
+      <div className="absolute bottom-0 left-0 right-0 h-2/3 pointer-events-none"
+        style={{ background: "linear-gradient(to top, rgba(13,17,23,0.98) 0%, rgba(13,17,23,0.7) 50%, transparent 100%)" }}
+      />
+
+      {/* ── Right-side floating action buttons ──────────────────────── */}
+      <div className="absolute right-4 bottom-40 flex flex-col gap-4 items-center z-10">
+        {/* Vendor avatar */}
+        <button
+          onClick={() => onOpenSheet(vendor)}
+          className="flex flex-col items-center gap-1"
+        >
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-base border-2"
+            style={{
+              background: `linear-gradient(135deg, ${visual.grad[0]}, ${visual.grad[1]})`,
+              borderColor: visual.accent,
+            }}
+          >
+            {initials}
           </div>
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center -mt-3 border-2 border-[#0d1117]"
+            style={{ background: visual.accent }}
+          >
+            <span className="text-[8px] text-black font-bold">+</span>
+          </div>
+        </button>
 
-          {/* Live status badge */}
-          {isOpen ? (
-            <div className="flex items-center gap-1.5 bg-green-900/40 border border-green-700/40 px-2.5 py-1 rounded-full flex-shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-green-400 text-xs font-medium">Open now</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700/40 px-2.5 py-1 rounded-full flex-shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
-              <span className="text-gray-400 text-xs">Opens 8 AM</span>
-            </div>
-          )}
+        {/* Ask Sokoni */}
+        <button
+          onClick={() => onAsk(vendor)}
+          className="flex flex-col items-center gap-1"
+        >
+          <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-2xl hover:bg-black/70 transition-colors active:scale-95">
+            🤖
+          </div>
+          <span className="text-white text-[10px] font-medium drop-shadow">Ask AI</span>
+        </button>
+
+        {/* Request service */}
+        <button
+          onClick={() => onRequest(vendor)}
+          className="flex flex-col items-center gap-1"
+        >
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-2xl hover:opacity-90 transition-opacity active:scale-95"
+            style={{ background: "#25D366" }}
+          >
+            🛒
+          </div>
+          <span className="text-white text-[10px] font-medium drop-shadow">Request</span>
+        </button>
+
+        {/* Info / details */}
+        <button
+          onClick={() => onOpenSheet(vendor)}
+          className="flex flex-col items-center gap-1"
+        >
+          <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-2xl hover:bg-black/70 transition-colors active:scale-95">
+            ℹ️
+          </div>
+          <span className="text-white text-[10px] font-medium drop-shadow">Details</span>
+        </button>
+
+        {/* Rating */}
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-yellow-400 text-xl">★</span>
+          <span className="text-white text-[10px] font-bold">{parseFloat(vendor.rating || 4).toFixed(1)}</span>
+        </div>
+      </div>
+
+      {/* ── Bottom info overlay ──────────────────────────────────────── */}
+      <div className="absolute bottom-0 left-0 right-0 px-4 pb-5 z-10">
+        {/* Status badge */}
+        <div className="flex items-center gap-2 mb-2">
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+            open ? "bg-green-900/60 border-green-600/60" : "bg-gray-900/60 border-gray-600/40"
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${open ? "bg-green-400 animate-pulse" : "bg-gray-500"}`} />
+            <span className={`text-xs font-medium ${open ? "text-green-400" : "text-gray-400"}`}>
+              {open ? "Open now" : "Closed"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 bg-black/40 px-2.5 py-1 rounded-full border border-white/10">
+            <span className="text-[#25D366] text-xs">👥</span>
+            <span className="text-white text-xs">{score}</span>
+          </div>
         </div>
 
+        {/* Vendor name */}
+        <button
+          onClick={() => onOpenSheet(vendor)}
+          className="text-left w-full mb-1"
+        >
+          <h2 className="text-white font-bold text-xl leading-tight drop-shadow-lg">
+            {vendor.name}
+          </h2>
+        </button>
+
         {/* Description */}
-        <p className="text-gray-400 text-sm leading-relaxed mb-3 line-clamp-2">
+        <p className="text-gray-300 text-sm leading-snug mb-3 line-clamp-2 drop-shadow">
           {vendor.description || "Quality service near you."}
         </p>
 
-        {/* Voice intro (if available) */}
-        {vendor.voice_intro_url && (
-          <div className="mb-3">
-            <VoiceIntroButton url={vendor.voice_intro_url} />
-          </div>
-        )}
-
-        {/* Highlight strip */}
-        <div className="mb-4">
-          <HighlightStrip category={vendor.category} />
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex gap-2 mb-3">
+        {/* Bottom action bar */}
+        <div className="flex gap-2">
           <button
-            onClick={() => onChat(vendor)}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#128C7E] text-[#0d1117] hover:text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+            onClick={() => onRequest(vendor)}
+            className="flex-1 flex items-center justify-center gap-2 font-bold py-3 rounded-2xl text-sm transition-all active:scale-95"
+            style={{ background: "#25D366", color: "#0d1117" }}
           >
-            <span>💬</span>
-            <span>Chat</span>
+            🛒 Request Service
           </button>
           <button
             onClick={() => onAsk(vendor)}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-[#30363d] hover:bg-[#444c56] text-gray-200 font-medium py-2.5 rounded-xl text-sm transition-colors border border-[#444c56]"
+            className="flex items-center justify-center gap-2 bg-black/50 backdrop-blur-sm border border-white/20 text-white font-semibold px-4 py-3 rounded-2xl text-sm transition-all active:scale-95 hover:bg-black/70"
           >
-            <span>🤖</span>
-            <span>Ask AI</span>
+            🤖 Ask
           </button>
         </div>
-
-        {/* Trust row */}
-        <div className="flex items-center justify-between pt-2 border-t border-[#30363d]">
-          <Stars rating={vendor.rating} />
-          <div className="flex items-center gap-1 bg-[#0d2818] border border-[#25D366]/20 px-2.5 py-1 rounded-full">
-            <span className="text-[#25D366] text-xs">👥</span>
-            <span className="text-[#25D366] text-xs font-medium">{score} happy neighbours</span>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
 
-// ── Nearby pulse strip ────────────────────────────────────────────────────
-function NearbyPulseStrip({ vendors, onChat }) {
-  // Pick up to 8 "active" vendors (simulate with first 8)
-  const active = vendors.slice(0, 8);
-
-  if (active.length === 0) return null;
-
-  return (
-    <div className="px-4 pb-6">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-white font-semibold text-sm">Nearby Active Vendors</p>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-[#25D366] animate-pulse" />
-          <span className="text-[#25D366] text-xs">Live</span>
-        </div>
-      </div>
-
-      <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-        {active.map((v) => {
-          const visual  = getCategoryVisual(v.category || "");
-          const initials = v.name?.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "??";
-          const isOpen  = simulateIsOpen(v.id || "");
-
-          return (
-            <div key={v.id} className="flex flex-col items-center gap-1.5 flex-shrink-0">
-              <div className="relative">
-                {/* Avatar circle */}
-                <button
-                  onClick={() => onChat(v)}
-                  className={`w-14 h-14 rounded-full bg-gradient-to-br ${visual.gradient} flex items-center justify-center text-white font-bold text-base border-2 transition-transform active:scale-95 ${
-                    isOpen ? "border-[#25D366]" : "border-[#30363d]"
-                  }`}
-                >
-                  {initials}
-                </button>
-                {/* Online dot */}
-                {isOpen && (
-                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#25D366] border-2 border-[#0d1117]" />
-                )}
-              </div>
-              <span className="text-gray-400 text-[10px] text-center leading-tight max-w-[56px] truncate">
-                {v.name?.split(" ")[0]}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Main component ────────────────────────────────────────────────────────
+// ── Main MarketScreen ─────────────────────────────────────────────────────
 export default function MarketScreen({ onSendToAssistant }) {
-  const [vendors, setVendors]           = useState([]);
-  const [filtered, setFiltered]         = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState(null);
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [categories, setCategories]     = useState(DEFAULT_CATEGORIES);
+  const [vendors, setVendors]         = useState([]);
+  const [filtered, setFiltered]       = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSheet, setActiveSheet] = useState(null); // vendor for bottom sheet
+  const [toast, setToast]             = useState(null);
+  const [currentIdx, setCurrentIdx]   = useState(0);
+  const [isListening, setIsListening] = useState(false);
 
-  // ── Build personalised category chips from recent searches ────────────
-  useEffect(() => {
-    const recent = getRecentSearches(); // e.g. ["tailor near Nakawa", "plumber"]
-    if (recent.length === 0) return;
+  const feedRef       = useRef(null);
+  const recognitionRef = useRef(null);
+  const userId        = localStorage.getItem("sokoni_guest_id") || "guest";
+  const displayName   = localStorage.getItem("sokoni_display_name") || "Guest";
 
-    // Extract keywords that match our known categories
-    const matched = new Set();
-    const keywords = ["tailoring","salon","bakery","cleaning","plumbing","phone repair",
-                      "fresh food","transport","grocery","catering","handyman","beauty"];
-    recent.forEach((term) => {
-      keywords.forEach((kw) => {
-        if (term.toLowerCase().includes(kw.split(" ")[0])) matched.add(kw);
-      });
-    });
-
-    if (matched.size === 0) return;
-
-    // Prepend matched categories (deduplicated) to the default list
-    const extra = [...matched].slice(0, 3).map((label) => ({
-      label,
-      emoji: CATEGORY_VISUALS[label]?.emoji || "🔍",
-      personalised: true,
-    }));
-
-    setCategories([
-      DEFAULT_CATEGORIES[0], // "All"
-      ...extra,
-      ...DEFAULT_CATEGORIES.slice(1).filter((c) => !matched.has(c.label)),
-    ]);
-  }, []);
-
-  // ── Fetch vendors ─────────────────────────────────────────────────────
-  const loadVendors = useCallback(async (category) => {
+  // ── Fetch all vendors once ────────────────────────────────────────────
+  const loadVendors = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchVendors(category === "All" ? null : category);
+      const data = await fetchVendors(null); // fetch all
       setVendors(data);
       setFiltered(data);
-    } catch (err) {
-      setError("Couldn't load vendors. Please check your connection.");
+    } catch {
+      setError("Couldn't load vendors. Check your connection.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadVendors(activeCategory); }, [activeCategory, loadVendors]);
+  useEffect(() => { loadVendors(); }, [loadVendors]);
+
+  // ── Filter by search query ────────────────────────────────────────────
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFiltered(vendors);
+      return;
+    }
+    const q = searchQuery.toLowerCase();
+    setFiltered(
+      vendors.filter((v) =>
+        v.name?.toLowerCase().includes(q) ||
+        v.category?.toLowerCase().includes(q) ||
+        v.description?.toLowerCase().includes(q)
+      )
+    );
+    setCurrentIdx(0);
+    // Scroll feed back to top
+    if (feedRef.current) feedRef.current.scrollTop = 0;
+  }, [searchQuery, vendors]);
+
+  // ── Track current slide via IntersectionObserver ──────────────────────
+  useEffect(() => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    const slides = feed.querySelectorAll("[data-slide]");
+    if (!slides.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setCurrentIdx(parseInt(entry.target.dataset.slide, 10));
+          }
+        });
+      },
+      { root: feed, threshold: 0.6 }
+    );
+    slides.forEach((s) => observer.observe(s));
+    return () => observer.disconnect();
+  }, [filtered]);
+
+  // ── Voice search ──────────────────────────────────────────────────────
+  function toggleVoiceSearch() {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+    if (!isRecognitionSupported()) {
+      alert("Voice search requires Chrome.");
+      return;
+    }
+    setIsListening(true);
+    recognitionRef.current = startListening(
+      (transcript) => {
+        setIsListening(false);
+        setSearchQuery(transcript);
+      },
+      () => setIsListening(false)
+    );
+  }
 
   // ── Navigation helpers ────────────────────────────────────────────────
-  function openChatWithVendor(vendor) {
-    const msg = `Hi! I saw ${vendor.name}'s profile on Sokoni Market and I'm interested in their ${vendor.category} service. Can you help me connect?`;
+  function handleAsk(vendor, prefill = "") {
+    const msg = prefill
+      ? `About ${vendor.name} (${vendor.category}): ${prefill}`
+      : `Tell me more about ${vendor.name} (${vendor.category}) and compare them with similar vendors near me.`;
+    setActiveSheet(null);
     onSendToAssistant?.(msg);
   }
 
-  function askAssistantAboutVendor(vendor) {
-    const msg = `Tell me more about ${vendor.name} (${vendor.category}) and compare them with similar vendors near me.`;
-    onSendToAssistant?.(msg);
+  async function handleRequest(vendor) {
+    setActiveSheet(null);
+    try {
+      await requestService(userId, vendor.owner_id || vendor.id, `Hi! I'm interested in your ${vendor.category} service.`, displayName);
+      setToast(`✅ Request sent to ${vendor.name}!`);
+    } catch {
+      // Fallback: open assistant with pre-filled message
+      onSendToAssistant?.(`Hi! I saw ${vendor.name}'s profile and I'm interested in their ${vendor.category} service.`);
+    }
+  }
+
+  // ── Slide navigation dots ─────────────────────────────────────────────
+  function scrollToSlide(idx) {
+    const feed = feedRef.current;
+    if (!feed) return;
+    const slide = feed.querySelector(`[data-slide="${idx}"]`);
+    slide?.scrollIntoView({ behavior: "smooth" });
   }
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[#0d1117]">
+    <div className="flex-1 flex flex-col overflow-hidden bg-[#0d1117] relative">
 
-      {/* ── Sticky header ──────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 bg-[#0d1117] border-b border-[#30363d] pt-4 pb-3">
-        {/* Title */}
-        <div className="flex items-center gap-3 px-4 mb-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#25D366] to-[#075E54] flex items-center justify-center text-lg">
-            🛒
-          </div>
-          <div>
-            <h1 className="text-white font-bold text-lg leading-tight">Sokoni Market</h1>
-            <p className="text-gray-500 text-xs">Curated for you · based on your chats</p>
-          </div>
+      {/* ── Sticky search bar ──────────────────────────────────────────── */}
+      <div className="absolute top-0 left-0 right-0 z-20 px-4 pt-3 pb-2"
+        style={{ background: "linear-gradient(to bottom, rgba(13,17,23,0.95) 70%, transparent)" }}
+      >
+        <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 focus-within:border-[#25D366]/60 transition-colors">
+          {/* Search icon */}
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" className="w-4 h-4 flex-shrink-0">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35" strokeLinecap="round"/>
+          </svg>
+
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search vendors, services… e.g. gomesi"
+            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 focus:outline-none"
+          />
+
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} className="text-gray-500 hover:text-white text-sm">✕</button>
+          )}
+
+          {/* Voice search */}
+          {isRecognitionSupported() && (
+            <button
+              onClick={toggleVoiceSearch}
+              className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
+                isListening ? "bg-red-500 animate-pulse" : "hover:bg-white/10"
+              }`}
+            >
+              <span className="text-sm">🎤</span>
+            </button>
+          )}
         </div>
 
-        {/* Category chips – horizontal scroll */}
-        <div className="flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar">
-          {categories.map((cat) => {
-            const isActive = activeCategory === cat.label;
-            return (
-              <button
-                key={cat.label}
-                onClick={() => setActiveCategory(cat.label)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium flex-shrink-0 transition-colors border ${
-                  isActive
-                    ? "bg-[#25D366] text-[#0d1117] border-[#25D366]"
-                    : "bg-[#161b22] text-gray-300 border-[#30363d] hover:border-[#25D366]"
-                }`}
-              >
-                <span>{cat.emoji}</span>
-                <span className="capitalize">{cat.label === "All" ? "All" : cat.label}</span>
-                {cat.personalised && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#25D366] ml-0.5" />
-                )}
-              </button>
-            );
-          })}
-        </div>
+        {/* Result count */}
+        {searchQuery && (
+          <p className="text-gray-500 text-xs mt-1.5 px-1">
+            {filtered.length} result{filtered.length !== 1 ? "s" : ""} for "{searchQuery}"
+          </p>
+        )}
       </div>
 
-      {/* ── Scrollable feed ────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
-
-        {/* Loading skeleton */}
-        {loading && (
-          <div className="px-4 pt-4 space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-[#161b22] rounded-2xl overflow-hidden border border-[#30363d]">
-                <div className="shimmer h-1.5 w-full" />
-                <div className="p-4 space-y-3">
-                  <div className="flex justify-between">
-                    <div className="shimmer h-4 w-1/2 rounded-full" />
-                    <div className="shimmer h-6 w-20 rounded-full" />
-                  </div>
-                  <div className="shimmer h-3 w-full rounded-full" />
-                  <div className="shimmer h-3 w-3/4 rounded-full" />
-                  <div className="flex gap-2 mt-2">
-                    <div className="shimmer h-20 w-24 rounded-xl flex-shrink-0" />
-                    <div className="shimmer h-20 w-24 rounded-xl flex-shrink-0" />
-                    <div className="shimmer h-20 w-24 rounded-xl flex-shrink-0" />
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="shimmer h-10 flex-1 rounded-xl" />
-                    <div className="shimmer h-10 flex-1 rounded-xl" />
-                  </div>
-                </div>
-              </div>
-            ))}
+      {/* ── Loading ─────────────────────────────────────────────────────── */}
+      {loading && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="w-16 h-16 rounded-2xl shimmer" />
+          <div className="space-y-2 w-48">
+            <div className="shimmer h-3 rounded-full" />
+            <div className="shimmer h-3 w-3/4 rounded-full" />
           </div>
-        )}
+          <p className="text-gray-500 text-sm">Loading market…</p>
+        </div>
+      )}
 
-        {/* Error state */}
-        {!loading && error && (
-          <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
-            <span className="text-4xl mb-3">📡</span>
-            <p className="text-gray-400 text-sm">{error}</p>
-            <button
-              onClick={() => loadVendors(activeCategory)}
-              className="mt-4 bg-[#25D366] text-[#0d1117] font-semibold px-5 py-2 rounded-xl text-sm"
+      {/* ── Error ───────────────────────────────────────────────────────── */}
+      {!loading && error && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
+          <span className="text-5xl">📡</span>
+          <p className="text-gray-400 text-sm">{error}</p>
+          <button onClick={loadVendors} className="bg-[#25D366] text-[#0d1117] font-semibold px-5 py-2 rounded-xl text-sm">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* ── Empty ───────────────────────────────────────────────────────── */}
+      {!loading && !error && filtered.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
+          <span className="text-5xl">🔍</span>
+          <p className="text-white font-semibold">No vendors found</p>
+          <p className="text-gray-500 text-sm">Try a different search term</p>
+          <button onClick={() => setSearchQuery("")} className="border border-[#25D366] text-[#25D366] font-medium px-5 py-2 rounded-xl text-sm">
+            Clear search
+          </button>
+        </div>
+      )}
+
+      {/* ── Snap-scroll feed ────────────────────────────────────────────── */}
+      {!loading && !error && filtered.length > 0 && (
+        <div
+          ref={feedRef}
+          className="flex-1 overflow-y-scroll no-scrollbar"
+          style={{
+            scrollSnapType: "y mandatory",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {filtered.map((vendor, i) => (
+            <div
+              key={vendor.id}
+              data-slide={i}
+              style={{ height: "100%", scrollSnapAlign: "start", scrollSnapStop: "always" }}
             >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!loading && !error && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
-            <span className="text-4xl mb-3">🔍</span>
-            <p className="text-white font-semibold mb-1">No vendors found</p>
-            <p className="text-gray-500 text-sm">
-              No {activeCategory === "All" ? "" : activeCategory + " "}vendors in the database yet.
-            </p>
-            <button
-              onClick={() => setActiveCategory("All")}
-              className="mt-4 border border-[#25D366] text-[#25D366] font-medium px-5 py-2 rounded-xl text-sm"
-            >
-              Show all
-            </button>
-          </div>
-        )}
-
-        {/* Vendor story cards */}
-        {!loading && !error && filtered.length > 0 && (
-          <>
-            <div className="px-4 pt-4 space-y-4">
-              {filtered.map((vendor, i) => (
-                <VendorStoryCard
-                  key={vendor.id}
-                  vendor={vendor}
-                  index={i}
-                  onChat={openChatWithVendor}
-                  onAsk={askAssistantAboutVendor}
-                />
-              ))}
-            </div>
-
-            {/* Nearby pulse strip */}
-            <div className="mt-6">
-              <div className="px-4 mb-3">
-                <div className="h-px bg-[#30363d]" />
-              </div>
-              <NearbyPulseStrip
-                vendors={filtered}
-                onChat={openChatWithVendor}
+              <VendorSlide
+                vendor={vendor}
+                isActive={i === currentIdx}
+                onAsk={handleAsk}
+                onRequest={handleRequest}
+                onOpenSheet={setActiveSheet}
               />
             </div>
-          </>
-        )}
+          ))}
+        </div>
+      )}
 
-        {/* Bottom padding for nav bar */}
-        <div className="h-4" />
-      </div>
+      {/* ── Slide indicator dots (right side) ───────────────────────────── */}
+      {!loading && filtered.length > 1 && (
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-1.5">
+          {filtered.slice(0, Math.min(filtered.length, 8)).map((_, i) => (
+            <button
+              key={i}
+              onClick={() => scrollToSlide(i)}
+              className={`rounded-full transition-all ${
+                i === currentIdx ? "w-1.5 h-4 bg-white" : "w-1.5 h-1.5 bg-white/30"
+              }`}
+            />
+          ))}
+          {filtered.length > 8 && (
+            <span className="text-white/40 text-[8px] text-center">+{filtered.length - 8}</span>
+          )}
+        </div>
+      )}
+
+      {/* ── Swipe hint (shown briefly on first load) ─────────────────────── */}
+      {!loading && filtered.length > 1 && currentIdx === 0 && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1 pointer-events-none"
+          style={{ animation: "fadeIn 0.5s ease-out 1.5s both" }}
+        >
+          <div className="text-white/60 text-xs">Swipe up</div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" className="w-5 h-5 animate-bounce">
+            <path d="M12 5v14M5 12l7 7 7-7" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+
+      {/* ── Bottom sheet ────────────────────────────────────────────────── */}
+      {activeSheet && (
+        <BottomSheet
+          vendor={activeSheet}
+          onClose={() => setActiveSheet(null)}
+          onChat={handleRequest}
+          onAsk={handleAsk}
+        />
+      )}
+
+      {/* ── Toast ───────────────────────────────────────────────────────── */}
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
   );
 }
