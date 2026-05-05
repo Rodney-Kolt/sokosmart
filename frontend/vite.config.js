@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: "script",   // injects <script> tag directly — PWABuilder can detect it
+      injectRegister: null,       // we register manually in index.html
       strategies: "generateSW",
       // Include all assets in the precache
       includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "screenshot-mobile.png", "offline.html"],
