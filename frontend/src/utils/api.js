@@ -10,9 +10,22 @@ const BASE_URL = import.meta.env.VITE_API_URL || "";
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 30000,
+  timeout: 60000,   // 60s – Render free tier can take ~30s to wake up
   headers: { "Content-Type": "application/json" },
 });
+
+// Intercept network errors and give a friendlier message
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (!err.response) {
+      // No response = server down or sleeping
+      err.message =
+        "The server is waking up (Render free tier). Please wait 30 seconds and try again.";
+    }
+    return Promise.reject(err);
+  }
+);
 
 // ── Chat ─────────────────────────────────────────────────────────────────
 

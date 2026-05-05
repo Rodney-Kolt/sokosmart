@@ -105,9 +105,12 @@ export default function ChatScreen() {
         speak(assistantMsg.content);
       }
     } catch (err) {
+      const msg = err.message?.includes("waking up")
+        ? "⏳ The server is waking up on Render (free tier takes ~30s). Please wait a moment and try again."
+        : "⚠️ Sorry, I couldn't connect to the server. Please check your connection and try again.";
       setMessages((prev) => [
         ...prev,
-        newMsg("assistant", "text", "⚠️ Sorry, I couldn't connect to the server. Please check your connection and try again."),
+        newMsg("assistant", "text", msg),
       ]);
     } finally {
       setIsLoading(false);
