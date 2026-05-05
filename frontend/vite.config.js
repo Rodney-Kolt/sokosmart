@@ -21,6 +21,7 @@ export default defineConfig({
         orientation: "portrait",
         start_url: "/",
         id: "/",          // stable app identity — never change this
+        prefer_related_applications: false,  // always prefer the PWA over any native app
         scope: "/",
         lang: "en-UG",
         categories: ["shopping", "social", "utilities"],
