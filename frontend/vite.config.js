@@ -10,7 +10,7 @@ export default defineConfig({
       injectRegister: null,       // we register manually in index.html
       strategies: "generateSW",
       // Include all assets in the precache
-      includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "screenshot-mobile.png", "offline.html"],
+      includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "screenshot-mobile.png", "screenshot-wide.png", "offline.html"],
       manifest: {
         name: "Sokoni Chat",
         short_name: "Sokoni",
@@ -24,6 +24,9 @@ export default defineConfig({
         prefer_related_applications: false,  // always prefer the PWA over any native app
         scope: "/",
         lang: "en-UG",
+        dir: "ltr",
+        iarc_rating_id: "e84b072d-71b3-4d3e-86ae-31a8ce4e53b7",
+        display_override: ["window-controls-overlay", "standalone", "minimal-ui"],
         categories: ["shopping", "social", "utilities"],
         icons: [
           {
@@ -46,6 +49,13 @@ export default defineConfig({
             type: "image/png",
             form_factor: "narrow",
             label: "Sokoni Chat – hyperlocal marketplace",
+          },
+          {
+            src: "/screenshot-wide.png",
+            sizes: "1280x800",
+            type: "image/png",
+            form_factor: "wide",
+            label: "Sokoni Chat – desktop view",
           },
         ],
         shortcuts: [
