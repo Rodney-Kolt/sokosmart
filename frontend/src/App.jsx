@@ -19,6 +19,8 @@ import MarketScreen    from "./components/MarketScreen";
 import AssistantScreen from "./components/AssistantScreen";
 import ProfileScreen   from "./components/ProfileScreen";
 import VendorDashboard from "./components/VendorDashboard";
+import WelcomePage     from "./components/WelcomePage";
+import ResetPasswordPage from "./components/ResetPasswordPage";
 import { getUnreadCount, getNotificationCount, subscribeToNotifications } from "./utils/api";
 
 // ── Keep Render backend awake ─────────────────────────────────────────────
@@ -149,6 +151,10 @@ export default function App() {
         <div className="w-full max-w-md bg-[#0d1117] h-full flex flex-col shadow-2xl overflow-hidden">
           <BrowserRouter>
             <Routes>
+              {/* Email auth redirect pages – no bottom nav */}
+              <Route path="/welcome"        element={<WelcomePage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+
               {/* Legacy redirects */}
               <Route path="/dashboard"  element={<Navigate to="/" replace />} />
               <Route path="/chat"       element={<Navigate to="/" replace />} />

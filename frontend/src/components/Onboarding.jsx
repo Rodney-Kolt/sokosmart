@@ -117,6 +117,9 @@ export default function Onboarding() {
       const { data: authData, error: authErr } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: "https://sokosmart-two.vercel.app/welcome",
+        },
       });
       if (authErr) throw authErr;
 
