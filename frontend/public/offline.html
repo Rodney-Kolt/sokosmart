@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sokoni Chat – Offline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #fff;
+      font-family: Inter, system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: 2rem;
+      text-align: center;
+    }
+    .icon { font-size: 4rem; margin-bottom: 1.5rem; }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.5rem; }
+    p  { color: #6b7280; font-size: 0.9rem; line-height: 1.6; max-width: 280px; }
+    button {
+      margin-top: 2rem;
+      background: #25D366;
+      color: #0d1117;
+      border: none;
+      font-weight: 700;
+      font-size: 0.9rem;
+      padding: 0.75rem 2rem;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    button:active { opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <div class="icon">📡</div>
+  <h1>You're offline</h1>
+  <p>Sokoni Chat needs a connection to find vendors near you. Check your internet and try again.</p>
+  <button onclick="location.reload()">Try again</button>
+</body>
+</html>

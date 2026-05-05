@@ -10,7 +10,7 @@ export default defineConfig({
       injectRegister: "script",   // injects <script> tag directly — PWABuilder can detect it
       strategies: "generateSW",
       // Include all assets in the precache
-      includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "screenshot-mobile.png"],
+      includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "screenshot-mobile.png", "offline.html"],
       manifest: {
         name: "Sokoni Chat",
         short_name: "Sokoni",
@@ -20,6 +20,7 @@ export default defineConfig({
         display: "standalone",
         orientation: "portrait",
         start_url: "/",
+        id: "/",          // stable app identity — never change this
         scope: "/",
         lang: "en-UG",
         categories: ["shopping", "social", "utilities"],
@@ -64,6 +65,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Serve offline.html when navigation fails (no network + not cached)
+        navigateFallback: "/offline.html",
+        navigateFallbackDenylist: [/^\/api/, /^\/health/],
         // Cache strategies
         runtimeCaching: [
           {
