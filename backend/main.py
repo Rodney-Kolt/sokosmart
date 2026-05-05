@@ -283,7 +283,14 @@ async def chat(req: ChatRequest):
         return {"type": "text", "reply": ai_response_text}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        err_str = str(e)
+        # Gemini quota exceeded — return friendly message instead of 500
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+            return {
+                "type": "text",
+                "reply": "⏳ The AI assistant has reached its daily limit. It resets every 24 hours. Please try again tomorrow, or browse vendors directly in the Market tab!"
+            }
+        raise HTTPException(status_code=500, detail=err_str)
 
 
 # ── Feature 2: Service request → creates order ───────────────────────────────

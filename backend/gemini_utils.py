@@ -137,7 +137,7 @@ async def get_gemini_response(user_message: str, conversation_history: list) -> 
     ))
 
     response = await _client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash",
         contents=contents,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
