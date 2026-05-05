@@ -155,3 +155,81 @@ CREATE POLICY "Anyone can insert review"
 
 CREATE POLICY "Public read reviews"
   ON reviews FOR SELECT USING (TRUE);
+
+-- ============================================================
+-- MIGRATION v3 – Social Marketplace Features
+-- Run in Supabase SQL Editor
+-- ============================================================
+
+-- ── follows ──────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS follows (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  follower_id  TEXT NOT NULL,   -- auth UUID or guest UUID
+  following_id TEXT NOT NULL,   -- vendor owner_id being followed
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (follower_id, following_id)
+);
+CREATE INDEX IF NOT EXISTS idx_follows_follower  ON follows (follower_id);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON follows (following_id);
+ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can follow"   ON follows FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Anyone can unfollow" ON follows FOR DELETE USING (TRUE);
+CREATE POLICY "Public read follows" ON follows FOR SELECT USING (TRUE);
+
+-- ── vendor_listings ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS vendor_listings (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  vendor_id   TEXT NOT NULL,          -- vendor owner_id
+  title       TEXT NOT NULL,
+  description TEXT,
+  price       NUMERIC(10,2),
+  category    TEXT,
+  images      TEXT[] DEFAULT '{}',    -- array of public URLs
+  status      TEXT DEFAULT 'active' CHECK (status IN ('active','paused','sold','draft')),
+  views       INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_listings_vendor   ON vendor_listings (vendor_id);
+CREATE INDEX IF NOT EXISTS idx_listings_status   ON vendor_listings (status);
+CREATE INDEX IF NOT EXISTS idx_listings_category ON vendor_listings (category);
+ALTER TABLE vendor_listings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read active listings" ON vendor_listings FOR SELECT USING (status = 'active');
+CREATE POLICY "Anyone can insert listing"   ON vendor_listings FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Anyone can update listing"   ON vendor_listings FOR UPDATE USING (TRUE);
+
+-- ── profile_views ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS profile_views (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id  TEXT NOT NULL,   -- vendor owner_id being viewed
+  viewer_id   TEXT,            -- NULL for anonymous
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_profile_views_profile ON profile_views (profile_id);
+ALTER TABLE profile_views ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can insert profile view" ON profile_views FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Owner reads own views"          ON profile_views FOR SELECT USING (TRUE);
+
+-- ── notifications ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notifications (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     TEXT NOT NULL,   -- recipient
+  type        TEXT NOT NULL,   -- 'follow' | 'new_listing' | 'new_message' | 'profile_view' | 'order_update'
+  title       TEXT NOT NULL,
+  body        TEXT,
+  data        JSONB DEFAULT '{}',
+  is_read     BOOLEAN DEFAULT FALSE,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user   ON notifications (user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (user_id, is_read);
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can insert notification" ON notifications FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "User reads own notifications"   ON notifications FOR SELECT USING (TRUE);
+CREATE POLICY "User updates own notifications" ON notifications FOR UPDATE USING (TRUE);
+
+-- ── Trigger: auto-update vendor_listings.updated_at ──────────────────────────
+DROP TRIGGER IF EXISTS listings_updated_at ON vendor_listings;
+CREATE TRIGGER listings_updated_at
+  BEFORE UPDATE ON vendor_listings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();

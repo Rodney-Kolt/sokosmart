@@ -19,7 +19,7 @@ import MarketScreen    from "./components/MarketScreen";
 import AssistantScreen from "./components/AssistantScreen";
 import ProfileScreen   from "./components/ProfileScreen";
 import VendorDashboard from "./components/VendorDashboard";
-import { getUnreadCount } from "./utils/api";
+import { getUnreadCount, getNotificationCount, subscribeToNotifications } from "./utils/api";
 
 // ── Keep Render backend awake ─────────────────────────────────────────────
 function useWakeUpBackend() {
@@ -46,8 +46,11 @@ function MainShell() {
   const pollUnread = useCallback(async () => {
     if (!userId) return;
     try {
-      const count = await getUnreadCount(userId, role);
-      setBadges({ assistant: count });
+      const [msgCount, notifCount] = await Promise.all([
+        getUnreadCount(userId, role),
+        getNotificationCount(userId),
+      ]);
+      setBadges({ assistant: msgCount, profile: notifCount });
     } catch { /* silent */ }
   }, [userId, role]);
 
@@ -57,10 +60,22 @@ function MainShell() {
     return () => clearInterval(interval);
   }, [pollUnread]);
 
+  // Subscribe to realtime notifications for instant badge update
+  useEffect(() => {
+    if (!userId) return;
+    const unsub = subscribeToNotifications(userId, () => {
+      setBadges((prev) => ({ ...prev, profile: (prev.profile || 0) + 1 }));
+    });
+    return unsub;
+  }, [userId]);
+
   // Clear badge when user opens the assistant tab
   useEffect(() => {
     if (activeTab === "assistant") {
       setBadges((prev) => ({ ...prev, assistant: 0 }));
+    }
+    if (activeTab === "profile") {
+      setBadges((prev) => ({ ...prev, profile: 0 }));
     }
   }, [activeTab]);
 

@@ -28,6 +28,22 @@ from db_utils import (
     create_review,
     get_unread_count_for_consumer,
     get_unread_count_for_vendor,
+    # v3 social features
+    follow_vendor,
+    unfollow_vendor,
+    get_followers,
+    get_following,
+    is_following,
+    create_listing,
+    get_vendor_listings,
+    update_listing_status,
+    record_profile_view,
+    get_profile_view_count,
+    get_notifications,
+    mark_notifications_read,
+    get_unread_notification_count,
+    get_vendor_analytics,
+    create_notification,
 )
 
 load_dotenv()
@@ -118,6 +134,30 @@ class ReviewSubmit(BaseModel):
     rating: int
     review_text: Optional[str] = ""
     voice_review_url: Optional[str] = ""
+
+
+class FollowRequest(BaseModel):
+    follower_id: str
+    following_id: str
+
+
+class ListingCreate(BaseModel):
+    vendor_id: str
+    title: str
+    description: Optional[str] = ""
+    price: Optional[float] = None
+    category: Optional[str] = ""
+    images: Optional[list] = []
+    status: Optional[str] = "active"
+
+
+class ListingStatusUpdate(BaseModel):
+    status: str  # active | paused | sold | draft
+
+
+class GenerateDescriptionRequest(BaseModel):
+    title: str
+    category: Optional[str] = ""
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -398,5 +438,224 @@ async def vendor_profile(vendor_id: str):
     try:
         profile = await get_vendor_profile(vendor_id)
         return {"profile": profile}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Feature: Follow / Unfollow ────────────────────────────────────────────────
+
+@app.post("/follow")
+async def follow(req: FollowRequest):
+    try:
+        ok = await follow_vendor(req.follower_id, req.following_id)
+        if ok:
+            await create_notification(
+                user_id=req.following_id,
+                type_="follow",
+                title="New follower",
+                body="Someone started following you on Sokoni!",
+                data={"follower_id": req.follower_id},
+            )
+        return {"success": ok}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/unfollow")
+async def unfollow(req: FollowRequest):
+    try:
+        ok = await unfollow_vendor(req.follower_id, req.following_id)
+        return {"success": ok}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/followers/{user_id}")
+async def get_user_followers(user_id: str):
+    try:
+        data = await get_followers(user_id)
+        return {"followers": data, "count": len(data)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/following/{user_id}")
+async def get_user_following(user_id: str):
+    try:
+        data = await get_following(user_id)
+        return {"following": data, "count": len(data)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/is-following")
+async def check_following(follower_id: str, following_id: str):
+    try:
+        result = await is_following(follower_id, following_id)
+        return {"is_following": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Feature: Listings ─────────────────────────────────────────────────────────
+
+@app.post("/listing")
+async def create_vendor_listing(req: ListingCreate):
+    try:
+        listing = await create_listing(
+            vendor_id=req.vendor_id,
+            title=req.title,
+            description=req.description or "",
+            price=req.price,
+            category=req.category or "",
+            images=req.images or [],
+            status=req.status or "active",
+        )
+        # Notify followers of new listing
+        if listing and req.status == "active":
+            followers = await get_followers(req.vendor_id)
+            for f in followers:
+                await create_notification(
+                    user_id=f["follower_id"],
+                    type_="new_listing",
+                    title=f"New listing: {req.title}",
+                    body=f"A vendor you follow just posted a new item.",
+                    data={"listing_id": listing["id"], "vendor_id": req.vendor_id},
+                )
+        return {"success": True, "listing": listing}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/vendor/{vendor_id}/listings")
+async def vendor_listings(vendor_id: str, status: Optional[str] = None):
+    try:
+        listings = await get_vendor_listings(vendor_id, status)
+        return {"listings": listings}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/listing/{listing_id}/status")
+async def update_listing(listing_id: str, req: ListingStatusUpdate):
+    valid = {"active", "paused", "sold", "draft"}
+    if req.status not in valid:
+        raise HTTPException(status_code=400, detail=f"Status must be one of {valid}")
+    try:
+        ok = await update_listing_status(listing_id, req.status)
+        return {"success": ok}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/generate-listing-description")
+async def generate_description(req: GenerateDescriptionRequest):
+    """Use Gemini to generate a compelling listing description."""
+    try:
+        prompt = (
+            f"Write a short, compelling product/service listing description (2-3 sentences) "
+            f"for a hyperlocal marketplace in Uganda. "
+            f"Title: '{req.title}'. Category: '{req.category}'. "
+            f"Be friendly, specific, and mention quality. Do not use emojis. "
+            f"Return only the description text, nothing else."
+        )
+        from gemini_utils import _client, types
+        response = await _client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
+        )
+        return {"description": response.text.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Feature: Profile views ────────────────────────────────────────────────────
+
+@app.post("/profile/{profile_id}/view")
+async def track_profile_view(profile_id: str, viewer_id: Optional[str] = None):
+    """Record a profile view. Skips if viewer == profile owner."""
+    try:
+        if viewer_id and viewer_id == profile_id:
+            return {"recorded": False}
+        await record_profile_view(profile_id, viewer_id)
+        await create_notification(
+            user_id=profile_id,
+            type_="profile_view",
+            title="Someone viewed your profile",
+            body="Your profile is getting attention!",
+            data={"viewer_id": viewer_id},
+        )
+        return {"recorded": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Feature: Notifications ────────────────────────────────────────────────────
+
+@app.get("/notifications/{user_id}")
+async def get_user_notifications(user_id: str):
+    try:
+        notifs = await get_notifications(user_id)
+        unread = sum(1 for n in notifs if not n.get("is_read"))
+        return {"notifications": notifs, "unread_count": unread}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/notifications/{user_id}/read")
+async def mark_read(user_id: str):
+    try:
+        await mark_notifications_read(user_id)
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/notifications/{user_id}/count")
+async def notification_count(user_id: str):
+    try:
+        count = await get_unread_notification_count(user_id)
+        return {"count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Feature: Vendor analytics & rank ─────────────────────────────────────────
+
+@app.get("/vendor/analytics")
+async def vendor_analytics(vendor_id: str):
+    try:
+        data = await get_vendor_analytics(vendor_id)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/vendor/rank")
+async def vendor_rank(vendor_id: str):
+    """Calculate community rank for a vendor."""
+    try:
+        analytics = await get_vendor_analytics(vendor_id)
+        score = analytics["rank_score"]
+
+        # Determine rank label
+        if score >= 200:
+            label = "🏆 Top Vendor"
+        elif score >= 100:
+            label = "⭐ Rising Star"
+        elif score >= 50:
+            label = "🌱 Growing Business"
+        else:
+            label = "🆕 New on Sokoni"
+
+        return {
+            "score":      score,
+            "label":      label,
+            "breakdown": {
+                "rating_pts":   int(analytics["rating"] * 20),
+                "follower_pts": analytics["follower_count"] * 2,
+                "order_pts":    analytics["completed_orders"] * 5,
+            },
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

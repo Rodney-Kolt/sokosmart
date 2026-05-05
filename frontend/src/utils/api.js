@@ -161,3 +161,107 @@ export async function getUnreadCount(userId, role = "consumer") {
   const { data } = await api.get("/unread-count", { params: { user_id: userId, role } });
   return data.count || 0;
 }
+
+// ── v3: Follow system ─────────────────────────────────────────────────────
+
+export async function followVendor(followerId, followingId) {
+  const { data } = await api.post("/follow", { follower_id: followerId, following_id: followingId });
+  return data;
+}
+
+export async function unfollowVendor(followerId, followingId) {
+  const { data } = await api.delete("/unfollow", { data: { follower_id: followerId, following_id: followingId } });
+  return data;
+}
+
+export async function checkIsFollowing(followerId, followingId) {
+  const { data } = await api.get("/is-following", { params: { follower_id: followerId, following_id: followingId } });
+  return data.is_following || false;
+}
+
+export async function getFollowers(userId) {
+  const { data } = await api.get(`/followers/${userId}`);
+  return data;
+}
+
+export async function getFollowing(userId) {
+  const { data } = await api.get(`/following/${userId}`);
+  return data;
+}
+
+// ── v3: Listings ──────────────────────────────────────────────────────────
+
+export async function createListing(payload) {
+  const { data } = await api.post("/listing", payload);
+  return data;
+}
+
+export async function getVendorListings(vendorId, status = null) {
+  const params = status ? { status } : {};
+  const { data } = await api.get(`/vendor/${vendorId}/listings`, { params });
+  return data.listings || [];
+}
+
+export async function updateListingStatus(listingId, status) {
+  const { data } = await api.put(`/listing/${listingId}/status`, { status });
+  return data;
+}
+
+export async function generateListingDescription(title, category = "") {
+  const { data } = await api.post("/generate-listing-description", { title, category });
+  return data.description || "";
+}
+
+// ── v3: Profile views ─────────────────────────────────────────────────────
+
+export async function trackProfileView(profileId, viewerId = null) {
+  const params = viewerId ? { viewer_id: viewerId } : {};
+  const { data } = await api.post(`/profile/${profileId}/view`, null, { params });
+  return data;
+}
+
+// ── v3: Notifications ─────────────────────────────────────────────────────
+
+export async function getNotifications(userId) {
+  const { data } = await api.get(`/notifications/${userId}`);
+  return data;
+}
+
+export async function markNotificationsRead(userId) {
+  const { data } = await api.post(`/notifications/${userId}/read`);
+  return data;
+}
+
+export async function getNotificationCount(userId) {
+  const { data } = await api.get(`/notifications/${userId}/count`);
+  return data.count || 0;
+}
+
+// ── v3: Analytics ─────────────────────────────────────────────────────────
+
+export async function getVendorAnalytics(vendorId) {
+  const { data } = await api.get("/vendor/analytics", { params: { vendor_id: vendorId } });
+  return data;
+}
+
+export async function getVendorRank(vendorId) {
+  const { data } = await api.get("/vendor/rank", { params: { vendor_id: vendorId } });
+  return data;
+}
+
+// ── v3: Supabase Realtime notifications ──────────────────────────────────
+
+export function subscribeToNotifications(userId, onNotification) {
+  const channel = supabase
+    .channel(`notifications:${userId}`)
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "notifications",
+      filter: `user_id=eq.${userId}`,
+    }, (payload) => {
+      onNotification(payload.new);
+    })
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
