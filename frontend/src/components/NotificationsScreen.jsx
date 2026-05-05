@@ -42,13 +42,15 @@ export default function NotificationsScreen({ onClose }) {
 
   useEffect(() => {
     load();
-    // Mark all as read when screen opens
     if (userId) markNotificationsRead(userId).catch(() => {});
 
     // Subscribe to realtime
-    const unsub = subscribeToNotifications(userId, (notif) => {
-      setNotifications((prev) => [notif, ...prev]);
-    });
+    let unsub = () => {};
+    try {
+      unsub = subscribeToNotifications(userId, (notif) => {
+        setNotifications((prev) => [notif, ...prev]);
+      });
+    } catch { /* realtime not available */ }
     return unsub;
   }, [userId, load]);
 
@@ -56,7 +58,7 @@ export default function NotificationsScreen({ onClose }) {
     <div className="flex flex-col h-full bg-[#0d1117]">
       {/* Header */}
       <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-3 flex items-center gap-3 flex-shrink-0">
-        <button onClick={onClose} className="text-gray-400 hover:text-white">←</button>
+        <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none">←</button>
         <h2 className="text-white font-bold text-base flex-1">Notifications</h2>
         {notifications.length > 0 && (
           <button

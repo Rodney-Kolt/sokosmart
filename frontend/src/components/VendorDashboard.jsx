@@ -13,8 +13,10 @@ import { useNavigate } from "react-router-dom";
 import {
   getVendorMessages, getConversation, sendVendorReply,
   updateVendorStatus, getVendorOrders, updateOrderStatus,
+  getVendorListings, updateListingStatus,
 } from "../utils/api";
 import { supabase } from "../utils/supabaseClient";
+import CreateListing from "./CreateListing";
 
 const STATUS_OPTIONS = [
   { value: "open",   label: "Open",   color: "bg-green-500",  text: "text-green-400",  border: "border-green-600" },
@@ -38,14 +40,16 @@ const ORDER_STATUS_COLORS = {
   completed:   "text-gray-400   border-gray-700/40   bg-gray-900/20",
 };
 
-export default function VendorDashboard() {
+export default function VendorDashboard({ onBack }) {
   const navigate   = useNavigate();
   const vendorId   = localStorage.getItem("sokoni_vendor_id");
   const vendorName = localStorage.getItem("sokoni_display_name") || "Vendor";
 
-  const [view, setView]                 = useState("messages"); // "messages" | "orders" | "thread"
+  const [view, setView]                 = useState("messages"); // "messages" | "orders" | "thread" | "feed"
   const [requests, setRequests]         = useState([]);
   const [orders, setOrders]             = useState([]);
+  const [listings, setListings]         = useState([]);
+  const [showCreateListing, setShowCreateListing] = useState(false);
   const [activeThread, setActiveThread] = useState(null);
   const [thread, setThread]             = useState([]);
   const [replyText, setReplyText]       = useState("");
@@ -78,12 +82,22 @@ export default function VendorDashboard() {
     } catch { /* silent */ }
   }, [vendorId]);
 
+  // ── Fetch listings ────────────────────────────────────────────────────
+  const fetchListings = useCallback(async () => {
+    if (!vendorId) return;
+    try {
+      const data = await getVendorListings(vendorId);
+      setListings(data);
+    } catch { /* silent */ }
+  }, [vendorId]);
+
   useEffect(() => {
     fetchRequests();
     fetchOrders();
+    fetchListings();
     pollRef.current = setInterval(() => { fetchRequests(); fetchOrders(); }, 5000);
     return () => clearInterval(pollRef.current);
-  }, [fetchRequests, fetchOrders]);
+  }, [fetchRequests, fetchOrders, fetchListings]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -172,9 +186,12 @@ export default function VendorDashboard() {
           {view === "thread" || view === "orders" ? (
             <button onClick={() => setView("messages")} className="text-gray-400 hover:text-white">←</button>
           ) : (
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#25D366] to-[#075E54] flex items-center justify-center text-lg font-bold text-white">
+            <button
+              onClick={onBack || (() => navigate("/"))}
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-[#25D366] to-[#075E54] flex items-center justify-center text-lg font-bold text-white"
+            >
               🏪
-            </div>
+            </button>
           )}
           <div className="flex-1">
             <p className="text-white font-semibold text-sm leading-tight">
@@ -213,12 +230,13 @@ export default function VendorDashboard() {
           </div>
         )}
 
-        {/* Tab switcher: Messages | Orders */}
+        {/* Tab switcher: Messages | Orders | Feed */}
         {view !== "thread" && (
           <div className="flex gap-1 mt-3">
             {[
               { id: "messages", label: `Messages${unreadCount > 0 ? ` (${unreadCount})` : ""}` },
               { id: "orders",   label: `Orders${orders.filter(o => o.status !== "completed").length > 0 ? ` (${orders.filter(o => o.status !== "completed").length})` : ""}` },
+              { id: "feed",     label: `My Feed` },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -369,6 +387,78 @@ export default function VendorDashboard() {
             </button>
           </div>
         </>
+      )}
+      {/* ── Market Feed / Listings ──────────────────────────────────── */}
+      {view === "feed" && !showCreateListing && (
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-white font-semibold text-sm">Your Market Listings</p>
+            <button
+              onClick={() => setShowCreateListing(true)}
+              className="bg-[#25D366] text-[#0d1117] font-semibold text-xs px-3 py-1.5 rounded-full"
+            >
+              + New Listing
+            </button>
+          </div>
+
+          {listings.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+              <span className="text-5xl">🛍️</span>
+              <p className="text-white font-semibold">No listings yet</p>
+              <p className="text-gray-500 text-sm">Create a listing to advertise your products and services on the market feed.</p>
+              <button
+                onClick={() => setShowCreateListing(true)}
+                className="bg-[#25D366] text-[#0d1117] font-semibold px-5 py-2.5 rounded-xl text-sm mt-2"
+              >
+                Create First Listing →
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {listings.map((listing) => (
+                <div key={listing.id} className="bg-[#161b22] border border-[#30363d] rounded-2xl p-4">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="text-white font-semibold text-sm">{listing.title}</p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 ${
+                      listing.status === "active" ? "text-green-400 border-green-700/40 bg-green-900/20"
+                      : listing.status === "sold" ? "text-gray-400 border-gray-700/40 bg-gray-900/20"
+                      : "text-yellow-400 border-yellow-700/40 bg-yellow-900/20"
+                    }`}>{listing.status}</span>
+                  </div>
+                  {listing.price && (
+                    <p className="text-[#25D366] font-bold text-sm mb-1">UGX {Number(listing.price).toLocaleString()}</p>
+                  )}
+                  <p className="text-gray-500 text-xs mb-3 line-clamp-2">{listing.description}</p>
+                  <div className="flex gap-2">
+                    {listing.status !== "sold" && (
+                      <button
+                        onClick={() => updateListingStatus(listing.id, listing.status === "active" ? "paused" : "active").then(fetchListings)}
+                        className="flex-1 text-xs py-1.5 rounded-lg border border-[#30363d] text-gray-300 hover:border-[#25D366] transition-colors"
+                      >
+                        {listing.status === "active" ? "Pause" : "Activate"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => updateListingStatus(listing.id, "sold").then(fetchListings)}
+                      className="flex-1 text-xs py-1.5 rounded-lg border border-[#30363d] text-gray-300 hover:border-yellow-500 transition-colors"
+                    >
+                      Mark Sold
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create listing overlay */}
+      {view === "feed" && showCreateListing && (
+        <CreateListing
+          vendorId={vendorId}
+          onClose={() => setShowCreateListing(false)}
+          onCreated={() => { setShowCreateListing(false); fetchListings(); }}
+        />
       )}
     </div>
   );

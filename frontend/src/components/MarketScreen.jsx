@@ -20,8 +20,9 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { fetchVendors, getRecentSearches, requestService } from "../utils/api";
+import { fetchVendors, getRecentSearches, requestService, followVendor, unfollowVendor, checkIsFollowing } from "../utils/api";
 import { startListening, isRecognitionSupported } from "../utils/speech";
+import VendorPublicProfile from "./VendorPublicProfile";
 
 // ── Category → visual config ──────────────────────────────────────────────
 const CATEGORY_VISUALS = {
@@ -111,7 +112,7 @@ function Stars({ rating, size = "sm" }) {
 }
 
 // ── Bottom sheet ──────────────────────────────────────────────────────────
-function BottomSheet({ vendor, onClose, onChat, onAsk }) {
+function BottomSheet({ vendor, onClose, onChat, onAsk, onVisitProfile }) {
   const visual = getVisual(vendor.category);
   const open   = isOpen(vendor.id || "");
   const score  = trustScore(vendor.id || "");
@@ -210,6 +211,14 @@ function BottomSheet({ vendor, onClose, onChat, onAsk }) {
               🤖 Ask Sokoni
             </button>
           </div>
+
+          {/* Visit profile */}
+          <button
+            onClick={() => onVisitProfile(vendor)}
+            className="w-full mt-3 flex items-center justify-center gap-2 border border-[#30363d] hover:border-[#25D366] text-gray-300 font-medium py-3 rounded-2xl text-sm transition-colors"
+          >
+            👤 Visit Full Profile
+          </button>
         </div>
       </div>
     </>
@@ -422,7 +431,8 @@ export default function MarketScreen({ onSendToAssistant }) {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeSheet, setActiveSheet] = useState(null); // vendor for bottom sheet
+  const [activeSheet, setActiveSheet] = useState(null);
+  const [publicProfile, setPublicProfile] = useState(null); // full profile view
   const [toast, setToast]             = useState(null);
   const [currentIdx, setCurrentIdx]   = useState(0);
   const [isListening, setIsListening] = useState(false);
@@ -525,7 +535,6 @@ export default function MarketScreen({ onSendToAssistant }) {
       await requestService(userId, vendor.owner_id || vendor.id, `Hi! I'm interested in your ${vendor.category} service.`, displayName);
       setToast(`✅ Request sent to ${vendor.name}!`);
     } catch {
-      // Fallback: open assistant with pre-filled message
       onSendToAssistant?.(`Hi! I saw ${vendor.name}'s profile and I'm interested in their ${vendor.category} service.`);
     }
   }
@@ -685,7 +694,26 @@ export default function MarketScreen({ onSendToAssistant }) {
           onClose={() => setActiveSheet(null)}
           onChat={handleRequest}
           onAsk={handleAsk}
+          onVisitProfile={(v) => { setActiveSheet(null); setPublicProfile(v); }}
         />
+      )}
+
+      {/* ── Public vendor profile overlay ───────────────────────────────── */}
+      {publicProfile && (
+        <div className="absolute inset-0 z-50 bg-[#0d1117]">
+          <VendorPublicProfile
+            vendor={publicProfile}
+            onClose={() => setPublicProfile(null)}
+            onChat={(v, msg) => {
+              setPublicProfile(null);
+              handleRequest(v, msg);
+            }}
+            onAsk={(v) => {
+              setPublicProfile(null);
+              handleAsk(v);
+            }}
+          />
+        </div>
       )}
 
       {/* ── Toast ───────────────────────────────────────────────────────── */}

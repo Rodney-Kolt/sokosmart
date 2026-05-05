@@ -1,13 +1,13 @@
 /**
  * App.jsx – Root component for Sokoni Chat.
  *
- * Layout (Feature 5 – sticky nav):
- *   The outer container is h-[100dvh] flex-col.
- *   Tab content area is flex-1 overflow-hidden (each tab manages its own scroll).
- *   BottomNav is flex-shrink-0 – always visible, never pushed off screen.
+ * KEY CHANGE: VendorDashboard is now rendered INSIDE the tab shell
+ * so the bottom nav is always visible. The "profile" tab shows either
+ * ProfileScreen or VendorDashboard depending on role.
  *
- * Feature 4 – Notification badges:
- *   Polls /unread-count every 10 seconds and passes counts to BottomNav.
+ * Layout: h-[100dvh] flex-col
+ *   ├── flex-1 overflow-hidden  (tab content)
+ *   └── BottomNav flex-shrink-0 (always visible)
  */
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -37,12 +37,14 @@ function useWakeUpBackend() {
 function MainShell() {
   const [activeTab, setActiveTab]           = useState("assistant");
   const [pendingMessage, setPendingMessage] = useState(null);
-  const [badges, setBadges]                 = useState({ assistant: 0 });
+  const [badges, setBadges]                 = useState({ assistant: 0, profile: 0 });
+  // "profile" tab can show either ProfileScreen or VendorDashboard
+  const [profileView, setProfileView]       = useState("profile"); // "profile" | "dashboard"
 
   const userId = localStorage.getItem("sokoni_guest_id") || localStorage.getItem("sokoni_vendor_id") || "";
   const role   = localStorage.getItem("sokoni_role") || "consumer";
 
-  // ── Feature 4: Poll unread count every 10 seconds ────────────────────
+  // ── Poll unread counts ────────────────────────────────────────────────
   const pollUnread = useCallback(async () => {
     if (!userId) return;
     try {
@@ -61,23 +63,27 @@ function MainShell() {
     return () => clearInterval(interval);
   }, [pollUnread]);
 
-  // Subscribe to realtime notifications for instant badge update
+  // Realtime notification badge
   useEffect(() => {
     if (!userId) return;
-    const unsub = subscribeToNotifications(userId, () => {
-      setBadges((prev) => ({ ...prev, profile: (prev.profile || 0) + 1 }));
-    });
+    let unsub = () => {};
+    try {
+      unsub = subscribeToNotifications(userId, () => {
+        setBadges((prev) => ({ ...prev, profile: (prev.profile || 0) + 1 }));
+      });
+    } catch { /* realtime not available */ }
     return unsub;
   }, [userId]);
 
-  // Clear badge when user opens the assistant tab
+  // Clear badges when tab opened
   useEffect(() => {
-    if (activeTab === "assistant") {
-      setBadges((prev) => ({ ...prev, assistant: 0 }));
-    }
-    if (activeTab === "profile") {
-      setBadges((prev) => ({ ...prev, profile: 0 }));
-    }
+    if (activeTab === "assistant") setBadges((p) => ({ ...p, assistant: 0 }));
+    if (activeTab === "profile")   setBadges((p) => ({ ...p, profile: 0 }));
+  }, [activeTab]);
+
+  // When switching away from profile tab, reset to profile view
+  useEffect(() => {
+    if (activeTab !== "profile") setProfileView("profile");
   }, [activeTab]);
 
   function handleSendToAssistant(message) {
@@ -85,32 +91,39 @@ function MainShell() {
     setActiveTab("assistant");
   }
 
+  // Navigate to vendor dashboard (stays within tab shell)
+  function handleNavigateDashboard() {
+    setProfileView("dashboard");
+    setActiveTab("profile");
+  }
+
   return (
-    // Feature 5: h-full flex-col – content scrolls inside, nav stays fixed
     <div className="flex flex-col h-full">
 
-      {/* ── Tab content area – each tab manages its own internal scroll ── */}
+      {/* ── Tab content ──────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
 
+        {/* Market */}
         {activeTab === "market" && (
           <MarketScreen onSendToAssistant={handleSendToAssistant} />
         )}
 
-        {/* AssistantScreen always mounted – hidden via CSS when inactive */}
+        {/* Assistant – always mounted */}
         <AssistantScreen
           visible={activeTab === "assistant"}
           initialMessage={activeTab === "assistant" ? pendingMessage : null}
           onInitialMessageConsumed={() => setPendingMessage(null)}
         />
 
+        {/* Profile tab – shows either ProfileScreen or VendorDashboard */}
         {activeTab === "profile" && (
-          <ProfileScreen
-            onNavigateDashboard={() => window.location.href = "/dashboard"}
-          />
+          profileView === "dashboard"
+            ? <VendorDashboard onBack={() => setProfileView("profile")} />
+            : <ProfileScreen onNavigateDashboard={handleNavigateDashboard} />
         )}
       </div>
 
-      {/* ── Bottom nav – always visible, never scrolls away ─────────────── */}
+      {/* ── Bottom nav – ALWAYS visible ──────────────────────────────── */}
       <BottomNav
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -129,7 +142,6 @@ export default function App() {
     <>
       {!appReady && <LoadingScreen onDone={() => setAppReady(true)} />}
 
-      {/* Feature 5: h-[100dvh] ensures the app never exceeds viewport height */}
       <div
         className="flex justify-center bg-[#0d1117] h-[100dvh]"
         style={{ visibility: appReady ? "visible" : "hidden" }}
@@ -137,14 +149,11 @@ export default function App() {
         <div className="w-full max-w-md bg-[#0d1117] h-full flex flex-col shadow-2xl overflow-hidden">
           <BrowserRouter>
             <Routes>
-              {/* Vendor dashboard – full screen, no bottom nav */}
-              <Route path="/dashboard" element={<VendorDashboard />} />
-
               {/* Legacy redirects */}
+              <Route path="/dashboard"  element={<Navigate to="/" replace />} />
               <Route path="/chat"       element={<Navigate to="/" replace />} />
               <Route path="/onboarding" element={<Navigate to="/" replace />} />
-
-              {/* Everything else → tabbed shell */}
+              {/* Everything → tabbed shell with nav */}
               <Route path="/*" element={<MainShell />} />
             </Routes>
           </BrowserRouter>
