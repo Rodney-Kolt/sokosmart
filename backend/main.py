@@ -222,7 +222,11 @@ async def chat(req: ChatRequest):
         if parsed and parsed.get("type") == "quick_reply":
             return parsed
 
-        # ── Case 3: Plain text reply ─────────────────────────────────────────
+        # ── Case 3: AI returns plain text JSON {"type":"text","reply":"..."} ─
+        if parsed and parsed.get("type") == "text":
+            return {"type": "text", "reply": parsed.get("reply", ai_response_text)}
+
+        # ── Case 4: Fallback – return raw text ───────────────────────────────
         return {"type": "text", "reply": ai_response_text}
 
     except Exception as e:
