@@ -149,10 +149,9 @@ async def root():
 @app.get("/health")
 async def health_check():
     """
-    Health check endpoint.
-    Pinged by UptimeRobot every 5 minutes to keep Render awake.
+    Health check endpoint – pinged by UptimeRobot every minute to keep Render awake.
     """
-    return {"status": "OK", "service": "Sokoni Chat API"}
+    return {"status": "OK", "service": "Sokoni Chat API", "awake": True}
 
 
 @app.post("/chat")
