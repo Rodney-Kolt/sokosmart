@@ -199,9 +199,6 @@ VENDORS = [
 
 def seed():
     print("🌱 Seeding vendors table…")
-    # Clear existing demo data (optional – comment out to keep existing records)
-    supabase.table("vendors").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
-
     inserted = 0
     for vendor in VENDORS:
         try:
