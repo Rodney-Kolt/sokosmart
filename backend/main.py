@@ -111,7 +111,36 @@ class VendorReply(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/health")
+@app.post("/vendor/register")
+async def register_vendor(
+    owner_id: str,
+    name: str,
+    category: str,
+    description: str = "",
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+):
+    """
+    Insert a new vendor record using the service role key (bypasses RLS).
+    Called by the frontend after Supabase Auth signup.
+    """
+    try:
+        from db_utils import supabase as sb
+        result = sb.table("vendors").insert({
+            "owner_id":    owner_id,
+            "name":        name,
+            "category":    category,
+            "description": description,
+            "latitude":    latitude,
+            "longitude":   longitude,
+            "rating":      4.0,
+            "is_active":   True,
+        }).execute()
+        return {"success": True, "vendor": result.data[0] if result.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def health_check():
     """
     Health check endpoint.

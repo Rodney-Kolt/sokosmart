@@ -68,9 +68,11 @@ CREATE POLICY "Vendor owner can delete"
   USING (auth.uid() = owner_id);
 
 -- Vendors: authenticated users can insert (during registration)
+-- NOTE: vendor inserts go through the backend service role key which bypasses RLS.
+-- This policy is a fallback for direct client inserts.
 CREATE POLICY "Authenticated can insert vendor"
   ON vendors FOR INSERT
-  WITH CHECK (auth.uid() = owner_id);
+  WITH CHECK (auth.uid() = owner_id OR auth.role() = 'service_role');
 
 -- Messages: vendor can read messages addressed to them
 CREATE POLICY "Vendor reads own messages"

@@ -122,18 +122,20 @@ export default function Onboarding() {
 
       const userId = authData.user?.id;
 
-      // 2. Insert vendor record
-      const { error: dbErr } = await supabase.from("vendors").insert({
+      // 2. Insert vendor record via backend (uses service role key, bypasses RLS)
+      const apiUrl = import.meta.env.VITE_API_URL || "";
+      const params = new URLSearchParams({
         owner_id:    userId,
         name:        businessName.trim(),
         category:    vendorCategory,
         description: description.trim(),
-        latitude:    coords.lat,
-        longitude:   coords.lng,
-        rating:      4.0,
-        is_active:   true,
+        ...(coords.lat && { latitude: coords.lat, longitude: coords.lng }),
       });
-      if (dbErr) throw dbErr;
+      const res = await fetch(`${apiUrl}/vendor/register?${params}`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to save vendor profile");
+      }
 
       // 3. Store session info
       localStorage.setItem("sokoni_role",         "vendor");
