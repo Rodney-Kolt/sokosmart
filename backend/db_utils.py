@@ -60,6 +60,16 @@ async def search_vendors(
         if dist <= radius_km:
             nearby.append({**v, "_distance_km": dist})
 
+    # If nothing found within radius, expand to 15 km
+    if not nearby:
+        for v in vendors:
+            v_lat = v.get("latitude")
+            v_lng = v.get("longitude")
+            if v_lat is None or v_lng is None:
+                continue
+            dist = haversine_km(lat, lng, float(v_lat), float(v_lng))
+            nearby.append({**v, "_distance_km": dist})
+
     # Sort by distance, then rating
     nearby.sort(key=lambda x: (x["_distance_km"], -float(x.get("rating", 0))))
 
