@@ -69,18 +69,21 @@ export default function ProfileScreen({ onNavigateDashboard }) {
     if (!userId) return;
     setLoadingStats(true);
     try {
-      const [frs, fng, nc] = await Promise.all([
+      // Load each stat independently so one failure doesn't block the rest
+      const [frs, fng, nc] = await Promise.allSettled([
         getFollowers(userId),
         getFollowing(userId),
         getNotificationCount(userId),
       ]);
-      setFollowers(frs.count || 0);
-      setFollowing(fng.count || 0);
-      setNotifCount(nc);
+      if (frs.status === "fulfilled") setFollowers(frs.value?.count || 0);
+      if (fng.status === "fulfilled") setFollowing(fng.value?.count || 0);
+      if (nc.status  === "fulfilled") setNotifCount(nc.value || 0);
 
       if (role === "vendor" && vendorId) {
-        const ls = await getVendorListings(vendorId, "active");
-        setListings(ls);
+        try {
+          const ls = await getVendorListings(vendorId, "active");
+          setListings(ls);
+        } catch { /* listings table may not exist yet */ }
       }
     } catch { /* silent */ } finally {
       setLoadingStats(false);
@@ -91,9 +94,12 @@ export default function ProfileScreen({ onNavigateDashboard }) {
     loadStats();
     // Subscribe to realtime notifications for badge
     if (!userId) return;
-    const unsub = subscribeToNotifications(userId, () => {
-      setNotifCount((c) => c + 1);
-    });
+    let unsub = () => {};
+    try {
+      unsub = subscribeToNotifications(userId, () => {
+        setNotifCount((c) => c + 1);
+      });
+    } catch { /* realtime not available */ }
     return unsub;
   }, [userId, loadStats]);
 

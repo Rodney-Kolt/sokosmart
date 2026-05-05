@@ -46,12 +46,13 @@ function MainShell() {
   const pollUnread = useCallback(async () => {
     if (!userId) return;
     try {
-      const [msgCount, notifCount] = await Promise.all([
-        getUnreadCount(userId, role),
-        getNotificationCount(userId),
-      ]);
-      setBadges({ assistant: msgCount, profile: notifCount });
+      const msgCount = await getUnreadCount(userId, role);
+      setBadges((prev) => ({ ...prev, assistant: msgCount }));
     } catch { /* silent */ }
+    try {
+      const notifCount = await getNotificationCount(userId);
+      setBadges((prev) => ({ ...prev, profile: notifCount }));
+    } catch { /* notifications table may not exist yet */ }
   }, [userId, role]);
 
   useEffect(() => {
