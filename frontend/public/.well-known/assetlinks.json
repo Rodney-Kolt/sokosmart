@@ -3,6 +3,8 @@
   "target": {
     "namespace": "android_app",
     "package_name": "com.ja.sokonichat",
-    "sha256_cert_fingerprints": ["YOUR_SHA256_FINGERPRINT_HERE"]
+    "sha256_cert_fingerprints": [
+      "CE:01:DA:E8:23:9F:E5:95:6C:C6:11:CE:ED:AB:FE:51:BF:32:27:54:55:CF:89:7C:51:E7:BD:9B:1E:9E:30:43"
+    ]
   }
 }]
