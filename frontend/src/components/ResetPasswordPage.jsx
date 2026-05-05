@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { supabase } from "../utils/supabaseClient";
+import { updatePassword } from "../utils/auth";
 
 export default function ResetPasswordPage() {
   const [password, setPassword]   = useState("");
@@ -29,8 +30,7 @@ export default function ResetPasswordPage() {
     setStatus("loading");
     setError("");
     try {
-      const { error: err } = await supabase.auth.updateUser({ password });
-      if (err) throw err;
+      await updatePassword(password);
       setStatus("success");
       setTimeout(() => { window.location.href = "/"; }, 2500);
     } catch (err) {

@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState } from "react";
 import { supabase } from "../utils/supabaseClient";
+import { getSession } from "../utils/auth";
 
 export default function WelcomePage() {
   const [status, setStatus] = useState("verifying"); // verifying | success | error
@@ -14,13 +15,12 @@ export default function WelcomePage() {
   useEffect(() => {
     async function handleRedirect() {
       try {
-        // Supabase automatically picks up the token from the URL hash
-        const { data, error } = await supabase.auth.getSession();
+        // Wait a tick for Supabase to process the URL hash token
+        await new Promise((r) => setTimeout(r, 500));
+        const session = await getSession();
 
-        if (error) throw error;
-
-        if (data.session) {
-          const user = data.session.user;
+        if (session) {
+          const user = session.user;
           // Check if this user is a vendor
           const { data: vendor } = await supabase
             .from("vendors")
@@ -35,7 +35,6 @@ export default function WelcomePage() {
           }
 
           setStatus("success");
-          // Redirect to app after 2 seconds
           setTimeout(() => { window.location.href = "/"; }, 2000);
         } else {
           setStatus("error");

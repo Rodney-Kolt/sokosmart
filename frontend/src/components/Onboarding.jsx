@@ -9,6 +9,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../utils/supabaseClient";
+import { signUp, signIn, resetPassword } from "../utils/auth";
 
 // Vendor categories with emoji icons
 const VENDOR_CATEGORIES = [
@@ -52,6 +53,7 @@ export default function Onboarding() {
   const [password, setPassword]             = useState("");
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState("");
+  const [forgotSent, setForgotSent]         = useState(false); // password reset email sent
   const [locationStatus, setLocationStatus] = useState("idle"); // idle | loading | done | error
   const [coords, setCoords]                 = useState({ lat: null, lng: null });
 
@@ -113,16 +115,9 @@ export default function Onboarding() {
     setLoading(true);
     setError("");
     try {
-      // 1. Create auth user
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: "https://sokosmart-two.vercel.app/welcome",
-        },
-      });
-      if (authErr) throw authErr;
-
+      // 1. Create auth user via centralised auth helper
+      const authData = await signUp(email, password);
+      if (!authData) throw new Error("Sign-up failed");
       const userId = authData.user?.id;
 
       // 2. Insert vendor record via backend (uses service role key, bypasses RLS)
@@ -153,6 +148,21 @@ export default function Onboarding() {
     }
   }
 
+  // ── Forgot password ──────────────────────────────────────────────────────
+  async function handleForgotPassword() {
+    if (!email.trim()) { setError("Enter your email address first."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await resetPassword(email.trim());
+      setForgotSent(true);
+    } catch (err) {
+      setError(err.message || "Failed to send reset email.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // ── Vendor: log in ───────────────────────────────────────────────────────
   async function handleVendorLogin() {
     if (!email.trim() || !password.trim()) {
@@ -162,9 +172,7 @@ export default function Onboarding() {
     setLoading(true);
     setError("");
     try {
-      const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
-      if (authErr) throw authErr;
-
+      const data = await signIn(email, password);
       localStorage.setItem("sokoni_role",      "vendor");
       localStorage.setItem("sokoni_vendor_id", data.user.id);
       navigate("/dashboard");
@@ -304,35 +312,56 @@ export default function Onboarding() {
         {/* ── Step: Vendor sign-in ─────────────────────────────────────── */}
         {step === "vendor-signin" && (
           <div className="flex flex-col gap-4">
-            <button onClick={() => setStep("vendor-login")} className="text-sokoni-teal text-sm flex items-center gap-1 mb-1">
+            <button onClick={() => { setStep("vendor-login"); setForgotSent(false); setError(""); }} className="text-sokoni-teal text-sm flex items-center gap-1 mb-1">
               ← Back
             </button>
             <h2 className="text-xl font-semibold text-gray-800">Sign In</h2>
 
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sokoni-green"
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sokoni-green"
-            />
+            {forgotSent ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                <p className="text-green-700 font-semibold text-sm">📧 Reset email sent!</p>
+                <p className="text-green-600 text-xs mt-1">Check your inbox and click the link to reset your password.</p>
+                <button onClick={() => setForgotSent(false)} className="text-sokoni-teal text-xs mt-3 underline">
+                  Back to sign in
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sokoni-green"
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sokoni-green"
+                />
 
-            {error && <p className="text-red-500 text-sm">{error}</p>}
+                {/* Forgot password link */}
+                <button
+                  onClick={handleForgotPassword}
+                  disabled={loading}
+                  className="text-sokoni-teal text-xs text-right -mt-2 hover:underline disabled:opacity-50"
+                >
+                  Forgot password?
+                </button>
 
-            <button
-              onClick={handleVendorLogin}
-              disabled={loading}
-              className="bg-sokoni-green text-white font-semibold py-3 rounded-xl hover:bg-sokoni-darkgreen transition-colors disabled:opacity-60"
-            >
-              {loading ? "Signing in…" : "Sign In →"}
-            </button>
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+
+                <button
+                  onClick={handleVendorLogin}
+                  disabled={loading}
+                  className="bg-sokoni-green text-white font-semibold py-3 rounded-xl hover:bg-sokoni-darkgreen transition-colors disabled:opacity-60"
+                >
+                  {loading ? "Signing in…" : "Sign In →"}
+                </button>
+              </>
+            )}
           </div>
         )}
 
