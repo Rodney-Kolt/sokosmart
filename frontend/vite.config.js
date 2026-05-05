@@ -7,8 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: "script",   // injects <script> tag directly — PWABuilder can detect it
+      strategies: "generateSW",
       // Include all assets in the precache
-      includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png"],
+      includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "screenshot-mobile.png"],
       manifest: {
         name: "Sokoni Chat",
         short_name: "Sokoni",
@@ -41,7 +43,7 @@ export default defineConfig({
             sizes: "390x844",
             type: "image/png",
             form_factor: "narrow",
-            label: "Sokoni Chat market feed",
+            label: "Sokoni Chat – hyperlocal marketplace",
           },
         ],
         shortcuts: [
