@@ -2,31 +2,35 @@
  * App.jsx – Root component for Sokoni Chat.
  *
  * Layout:
- *   1. LoadingScreen (shown for ~2s on first load)
- *   2. Main app shell:
+ *   1. LoadingScreen (~2s splash)
+ *   2. Main tabbed shell:
  *      ┌─────────────────────┐
- *      │  Tab content area   │  ← flex-1, scrollable per tab
+ *      │  Tab content area   │
  *      ├─────────────────────┤
- *      │    BottomNav        │  ← fixed 64px bar
+ *      │    BottomNav        │
  *      └─────────────────────┘
  *
  * Tabs: market | assistant | profile
- * VendorDashboard is a separate full-screen route (no bottom nav).
- * Onboarding is accessible via Profile tab modal.
+ * VendorDashboard → separate full-screen route /dashboard (no bottom nav).
  *
- * AssistantScreen is always mounted (display:none when inactive)
- * so chat state persists across tab switches.
+ * AssistantScreen is ALWAYS mounted (display:none when inactive) so chat
+ * state persists across tab switches.
+ *
+ * Market → Assistant handoff:
+ *   MarketScreen calls onSendToAssistant(message) which sets pendingMessage
+ *   in MainShell. When AssistantScreen becomes visible it fires the message
+ *   automatically, then clears pendingMessage.
  */
 
 import React, { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import LoadingScreen    from "./components/LoadingScreen";
-import BottomNav        from "./components/BottomNav";
-import MarketScreen     from "./components/MarketScreen";
-import AssistantScreen  from "./components/AssistantScreen";
-import ProfileScreen    from "./components/ProfileScreen";
-import VendorDashboard  from "./components/VendorDashboard";
+import LoadingScreen   from "./components/LoadingScreen";
+import BottomNav       from "./components/BottomNav";
+import MarketScreen    from "./components/MarketScreen";
+import AssistantScreen from "./components/AssistantScreen";
+import ProfileScreen   from "./components/ProfileScreen";
+import VendorDashboard from "./components/VendorDashboard";
 
 // ── Keep Render backend awake ─────────────────────────────────────────────
 function useWakeUpBackend() {
@@ -42,29 +46,43 @@ function useWakeUpBackend() {
 
 // ── Main tabbed shell ─────────────────────────────────────────────────────
 function MainShell() {
-  const navigate  = useNavigate();
-  const [activeTab, setActiveTab] = useState("assistant");
+  const [activeTab, setActiveTab]       = useState("assistant");
+  // Message queued from Market tab to be auto-sent in Assistant
+  const [pendingMessage, setPendingMessage] = useState(null);
+
+  /**
+   * Called by MarketScreen when user taps "Chat with Vendor" or "Ask Assistant".
+   * Switches to the assistant tab and queues the message.
+   */
+  function handleSendToAssistant(message) {
+    setPendingMessage(message);
+    setActiveTab("assistant");
+  }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab content – AssistantScreen stays mounted to preserve state */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
 
-        {/* Market */}
-        {activeTab === "market" && <MarketScreen />}
+        {/* Market tab */}
+        {activeTab === "market" && (
+          <MarketScreen onSendToAssistant={handleSendToAssistant} />
+        )}
 
-        {/* Assistant – always mounted, hidden via CSS when inactive */}
-        <AssistantScreen visible={activeTab === "assistant"} />
+        {/* Assistant – always mounted, hidden via CSS when not active */}
+        <AssistantScreen
+          visible={activeTab === "assistant"}
+          initialMessage={activeTab === "assistant" ? pendingMessage : null}
+          onInitialMessageConsumed={() => setPendingMessage(null)}
+        />
 
-        {/* Profile */}
+        {/* Profile tab */}
         {activeTab === "profile" && (
           <ProfileScreen
-            onNavigateDashboard={() => navigate("/dashboard")}
+            onNavigateDashboard={() => window.location.href = "/dashboard"}
           />
         )}
       </div>
 
-      {/* Bottom navigation */}
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
   );
@@ -77,10 +95,8 @@ export default function App() {
 
   return (
     <>
-      {/* Splash screen – rendered on top until dismissed */}
       {!appReady && <LoadingScreen onDone={() => setAppReady(true)} />}
 
-      {/* Main app – rendered underneath (invisible until splash exits) */}
       <div
         className="min-h-screen flex justify-center bg-[#0d1117]"
         style={{ visibility: appReady ? "visible" : "hidden" }}
@@ -91,8 +107,8 @@ export default function App() {
               {/* Vendor dashboard – full screen, no bottom nav */}
               <Route path="/dashboard" element={<VendorDashboard />} />
 
-              {/* Legacy routes – redirect to main shell */}
-              <Route path="/chat"      element={<Navigate to="/" replace />} />
+              {/* Legacy redirects */}
+              <Route path="/chat"       element={<Navigate to="/" replace />} />
               <Route path="/onboarding" element={<Navigate to="/" replace />} />
 
               {/* Everything else → tabbed shell */}

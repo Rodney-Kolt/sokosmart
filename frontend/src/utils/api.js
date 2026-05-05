@@ -5,6 +5,7 @@
  */
 
 import axios from "axios";
+import { supabase } from "./supabaseClient";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "";
 
@@ -19,7 +20,6 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (!err.response) {
-      // No response = server down or sleeping
       err.message =
         "The server is waking up (Render free tier). Please wait 30 seconds and try again.";
     }
@@ -29,14 +29,6 @@ api.interceptors.response.use(
 
 // ── Chat ─────────────────────────────────────────────────────────────────
 
-/**
- * Send a chat message to the Sokoni AI.
- * @param {string} userId
- * @param {string} message
- * @param {number|null} latitude
- * @param {number|null} longitude
- * @param {Array} conversationHistory  – [{role, content}]
- */
 export async function sendChatMessage(userId, message, latitude, longitude, conversationHistory = []) {
   const { data } = await api.post("/chat", {
     user_id: userId,
@@ -50,9 +42,6 @@ export async function sendChatMessage(userId, message, latitude, longitude, conv
 
 // ── Service Requests ─────────────────────────────────────────────────────
 
-/**
- * Consumer sends a service request to a vendor.
- */
 export async function requestService(consumerId, vendorId, message, consumerName = "Guest") {
   const { data } = await api.post("/request-service", {
     consumer_id:   consumerId,
@@ -63,27 +52,18 @@ export async function requestService(consumerId, vendorId, message, consumerName
   return data;
 }
 
-// ── Vendor ───────────────────────────────────────────────────────────────
+// ── Vendor (backend) ─────────────────────────────────────────────────────
 
-/**
- * Fetch all incoming messages for a vendor.
- */
 export async function getVendorMessages(vendorId) {
   const { data } = await api.get(`/vendor/${vendorId}/messages`);
   return data.messages || [];
 }
 
-/**
- * Fetch the full conversation thread between a consumer and vendor.
- */
 export async function getConversation(consumerId, vendorId) {
   const { data } = await api.get(`/conversation/${consumerId}/${vendorId}`);
   return data.thread || [];
 }
 
-/**
- * Vendor sends a reply to a consumer.
- */
 export async function sendVendorReply(vendorId, consumerId, message) {
   const { data } = await api.post("/vendor/reply", {
     vendor_id:   vendorId,
@@ -93,10 +73,56 @@ export async function sendVendorReply(vendorId, consumerId, message) {
   return data;
 }
 
-/**
- * Fetch vendor profile by owner_id.
- */
 export async function getVendorProfile(vendorId) {
   const { data } = await api.get(`/vendor/${vendorId}/profile`);
   return data.profile;
+}
+
+// ── Vendors (Supabase direct – for MarketScreen) ──────────────────────────
+
+/**
+ * Fetch all active vendors from Supabase, optionally filtered by category.
+ * @param {string|null} category – partial match, e.g. "salon". Pass null for all.
+ * @returns {Promise<Array>}
+ */
+export async function fetchVendors(category = null) {
+  let query = supabase
+    .from("vendors")
+    .select("*")
+    .eq("is_active", true)
+    .order("rating", { ascending: false });
+
+  if (category && category !== "All") {
+    query = query.ilike("category", `%${category}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+// ── Recent searches (localStorage) ───────────────────────────────────────
+
+const RECENT_KEY = "sokoni_recent_searches";
+
+/**
+ * Save a search term to the recent searches list (max 10).
+ */
+export function saveRecentSearch(term) {
+  try {
+    const existing = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+    const updated  = [term, ...existing.filter((t) => t !== term)].slice(0, 10);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+  } catch { /* ignore */ }
+}
+
+/**
+ * Get the list of recent search terms.
+ */
+export function getRecentSearches() {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+  } catch {
+    return [];
+  }
 }

@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import VendorCard from "./VendorCard";
 import QuickReply from "./QuickReply";
-import { sendChatMessage, requestService } from "../utils/api";
+import { sendChatMessage, requestService, saveRecentSearch } from "../utils/api";
 import {
   startListening, speak, stopSpeaking,
   isRecognitionSupported, isSpeechSupported,
@@ -42,7 +42,7 @@ function renderTextWithBold(text) {
   );
 }
 
-export default function AssistantScreen({ visible }) {
+export default function AssistantScreen({ visible, initialMessage, onInitialMessageConsumed }) {
   // ── User identity ─────────────────────────────────────────────────────
   const userId      = localStorage.getItem("sokoni_guest_id") || "guest";
   const displayName = localStorage.getItem("sokoni_display_name") || "Guest";
@@ -71,6 +71,15 @@ export default function AssistantScreen({ visible }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // ── Handle initialMessage from Market tab ─────────────────────────────
+  useEffect(() => {
+    if (initialMessage && visible) {
+      sendMessage(initialMessage);
+      onInitialMessageConsumed?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessage, visible]);
+
   // ── Core send function ────────────────────────────────────────────────
   const sendMessage = useCallback(async (text) => {
     const trimmed = text.trim();
@@ -98,6 +107,8 @@ export default function AssistantScreen({ visible }) {
       if (response.type === "vendor_list") {
         assistantMsg = newMsg("assistant", "vendor_list", response.reply, { vendors: response.vendors || [] });
         historyRef.current.push({ role: "model", content: response.reply });
+        // Save the search term for Market personalisation
+        saveRecentSearch(trimmed);
       } else if (response.type === "quick_reply") {
         assistantMsg = newMsg("assistant", "quick_reply", response.reply, { buttons: response.buttons || [] });
         historyRef.current.push({ role: "model", content: response.reply });
