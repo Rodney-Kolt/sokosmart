@@ -6,13 +6,28 @@
  *   /dashboard  → Vendor dashboard (messages & replies)
  */
 
-import React from "react";
+import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Onboarding from "./components/Onboarding";
 import ChatScreen from "./components/ChatScreen";
 import VendorDashboard from "./components/VendorDashboard";
 
+// Ping the backend as soon as the app loads so Render wakes up
+// before the user sends their first message.
+function useWakeUpBackend() {
+  useEffect(() => {
+    const url = import.meta.env.VITE_API_URL;
+    if (!url) return;
+    fetch(`${url}/health`, { method: "GET" }).catch(() => {
+      // Silently retry after 20s if first ping fails (server still waking)
+      setTimeout(() => fetch(`${url}/health`).catch(() => {}), 20000);
+    });
+  }, []);
+}
+
 export default function App() {
+  useWakeUpBackend();
+
   return (
     <BrowserRouter>
       {/* Max-width wrapper keeps it phone-sized on desktop */}

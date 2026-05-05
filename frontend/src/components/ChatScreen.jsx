@@ -46,6 +46,7 @@ export default function ChatScreen() {
   const [isLoading, setIsLoading]       = useState(false);
   const [isListening, setIsListening]   = useState(false);
   const [autoSpeak, setAutoSpeak]       = useState(false);
+  const [serverWaking, setServerWaking] = useState(false);
   const [pendingVendor, setPendingVendor] = useState(null); // vendor awaiting service request
   const [serviceMsg, setServiceMsg]     = useState("");
 
@@ -105,13 +106,13 @@ export default function ChatScreen() {
         speak(assistantMsg.content);
       }
     } catch (err) {
-      const msg = err.message?.includes("waking up")
-        ? "⏳ The server is waking up on Render (free tier takes ~30s). Please wait a moment and try again."
+      const isWaking = err.message?.includes("waking up") || err.code === "ECONNABORTED";
+      if (isWaking) setServerWaking(true);
+      const msg = isWaking
+        ? "⏳ The server is waking up (this takes ~30 seconds on free hosting). Please try again in a moment."
         : "⚠️ Sorry, I couldn't connect to the server. Please check your connection and try again.";
-      setMessages((prev) => [
-        ...prev,
-        newMsg("assistant", "text", msg),
-      ]);
+      setMessages((prev) => [...prev, newMsg("assistant", "text", msg)]);
+    } finally {
     } finally {
       setIsLoading(false);
     }
@@ -297,6 +298,15 @@ export default function ChatScreen() {
           ✕
         </button>
       </div>
+
+      {/* ── Server waking banner ───────────────────────────────────── */}
+      {serverWaking && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 flex items-center gap-2 text-yellow-800 text-xs flex-shrink-0">
+          <span className="animate-spin">⏳</span>
+          <span>Server is waking up (~30s). Your next message will go through.</span>
+          <button onClick={() => setServerWaking(false)} className="ml-auto text-yellow-500 font-bold">✕</button>
+        </div>
+      )}
 
       {/* ── Messages ───────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-2">
