@@ -69,6 +69,8 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, newMsg("user", "text", trimmed)]);
     setInputText("");
     setIsLoading(true);
+    // If it takes more than 8s, show a "server waking up" hint
+    const wakeTimer = setTimeout(() => setServerWaking(true), 8000);
 
     // Update history
     historyRef.current.push({ role: "user", content: trimmed });
@@ -113,7 +115,8 @@ export default function ChatScreen() {
         : "⚠️ Sorry, I couldn't connect to the server. Please check your connection and try again.";
       setMessages((prev) => [...prev, newMsg("assistant", "text", msg)]);
     } finally {
-    } finally {
+      clearTimeout(wakeTimer);
+      setServerWaking(false);
       setIsLoading(false);
     }
   }, [userId, userLat, userLng, isLoading, autoSpeak]);
