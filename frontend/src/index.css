@@ -13,7 +13,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
   font-family: "Inter", system-ui, sans-serif;
-  background-color: #ECE5DD;
+  background-color: #0d1117;
 }
 
 /* ── Chat bubble animations ─────────────────────────────────────────────── */
@@ -21,35 +21,67 @@ html, body, #root {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
-.msg-enter {
-  animation: fadeInUp 0.2s ease-out;
-}
+.msg-enter { animation: fadeInUp 0.2s ease-out; }
 
 /* ── Typing indicator dots ──────────────────────────────────────────────── */
 .typing-dot {
-  width: 8px;
-  height: 8px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   background: #90949c;
   animation: typing 1.2s infinite ease-in-out;
 }
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-
 @keyframes typing {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30%            { transform: translateY(-6px); opacity: 1; }
 }
 
-/* ── Scrollbar styling ──────────────────────────────────────────────────── */
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
 
-/* ── Pulse animation for notification badge ─────────────────────────────── */
+/* ── Notification badge pulse ───────────────────────────────────────────── */
 @keyframes pulse-badge {
   0%, 100% { transform: scale(1); }
   50%       { transform: scale(1.15); }
 }
 .badge-pulse { animation: pulse-badge 1.5s infinite; }
+
+/* ── Splash screen fade-out ─────────────────────────────────────────────── */
+@keyframes splashFadeOut {
+  0%   { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
+}
+.splash-exit { animation: splashFadeOut 0.6s ease-out forwards; }
+
+/* ── Splash logo pulse ──────────────────────────────────────────────────── */
+@keyframes logoPulse {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%       { transform: scale(1.08); opacity: 0.85; }
+}
+.logo-pulse { animation: logoPulse 1.8s ease-in-out infinite; }
+
+/* ── Shimmer for skeleton cards ─────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #1c2128 25%, #2d333b 50%, #1c2128 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+/* ── Idle → chat transition ─────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.3s ease-out; }
+
+/* ── Bottom nav safe area ───────────────────────────────────────────────── */
+.bottom-nav-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

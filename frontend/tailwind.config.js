@@ -13,6 +13,12 @@ module.exports = {
           bg:         "#ECE5DD",
           header:     "#075E54",
         },
+        dark: {
+          bg:      "#0d1117",
+          surface: "#161b22",
+          border:  "#30363d",
+          muted:   "#6b7280",
+        },
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
