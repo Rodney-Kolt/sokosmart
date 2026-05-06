@@ -1,13 +1,12 @@
 /**
- * Sokoni Chat – Service Worker
+ * Sokoni Chat – Service Worker v2
  * Handles offline caching and navigation fallback.
- * This file is at /sw.js so PWABuilder can detect it directly.
- * The Workbox-generated sw.js (from vite-plugin-pwa) takes over after install.
+ * Version bumped to force replacement of old cached SW.
  */
 
 importScripts("https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js");
 
-const CACHE_NAME = "sokoni-v1";
+const CACHE_NAME = "sokoni-v2";  // bumped from v1 to force cache refresh
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [
   "/",

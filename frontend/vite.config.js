@@ -76,9 +76,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Bump this version to force all clients to get the new SW immediately
+        additionalManifestEntries: [],
         // Serve offline.html when navigation fails (no network + not cached)
         navigateFallback: "/offline.html",
-        navigateFallbackDenylist: [/^\/api/, /^\/health/],
+        navigateFallbackDenylist: [/^\/api/, /^\/health/, /^\/error/, /^\/welcome/, /^\/reset-password/],
         // Cache strategies
         runtimeCaching: [
           {
