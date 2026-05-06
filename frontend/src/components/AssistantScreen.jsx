@@ -210,15 +210,16 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
     return (
       <div key={msg.id} className={`flex msg-enter ${isUser ? "justify-end" : "justify-start"} mb-1`}>
         {!isUser && (
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#25D366] to-[#075E54] flex items-center justify-center text-white text-sm font-bold mr-2 flex-shrink-0 self-end mb-1">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white text-sm font-bold mr-2 flex-shrink-0 self-end mb-1 shadow-lg shadow-orange-500/20">
             S
           </div>
         )}
         <div className={`max-w-[82%] flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-          <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
+          {/* Bubble */}
+          <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-md ${
             isUser
-              ? "bg-[#25D366] text-[#0d1117] font-medium rounded-br-sm"
-              : "bg-[#161b22] text-gray-100 border border-[#30363d] rounded-bl-sm"
+              ? "bg-gradient-to-br from-orange-500/20 to-red-500/10 border border-orange-500/20 text-white rounded-br-sm"
+              : "bg-[#141920] border border-slate-800 text-slate-100 rounded-bl-sm"
           }`}>
             {renderTextWithBold(msg.content)}
           </div>
@@ -293,76 +294,84 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
       style={{ display: visible ? "flex" : "none" }}
     >
       {/* ══════════════════════════════════════════════════════════════
-          IDLE STATE – ChatGPT-style centered search
+          IDLE STATE – Premium ChatGPT-style centered search
       ══════════════════════════════════════════════════════════════ */}
       {mode === "idle" && (
-        <div className="flex-1 flex flex-col items-center justify-center px-5 bg-[#0d1117] overflow-y-auto fade-in">
+        <div className="flex-1 flex flex-col items-center justify-center px-5 bg-[#0A0E14] overflow-y-auto fade-in">
 
           {/* Logo + greeting */}
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#25D366] to-[#075E54] flex items-center justify-center text-3xl shadow-lg mb-4">
-              🛍️
+          <div className="flex flex-col items-center mb-10">
+            <div className="relative mb-5">
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl blur-xl opacity-40 animate-pulse" />
+              <div className="relative w-16 h-16 bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl shadow-lg shadow-orange-500/20 flex items-center justify-center">
+                <span className="text-3xl">🤖</span>
+              </div>
             </div>
-            <h2 className="text-white text-2xl font-bold text-center">
+            <h2 className="text-white text-2xl font-bold text-center font-display">
               What can I find for you?
             </h2>
-            <p className="text-gray-400 text-sm mt-1 text-center">
-              Your local market assistant
+            <p className="text-slate-400 text-sm mt-2 text-center">
+              Your AI-powered local market assistant
             </p>
           </div>
 
-          {/* Search bar */}
+          {/* Glowing search bar */}
           <div className="w-full max-w-sm">
-            <div className="flex items-center gap-2 bg-[#161b22] border border-[#30363d] rounded-2xl px-4 py-3 focus-within:border-[#25D366] transition-colors shadow-lg">
-              <input
-                type="text"
-                value={idleInput}
-                onChange={(e) => setIdleInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && idleInput.trim()) sendMessage(idleInput);
-                }}
-                placeholder="Ask for anything… e.g. 'plumber near Wandegeya'"
-                className="flex-1 bg-transparent text-gray-100 text-sm placeholder-gray-500 focus:outline-none"
-                autoFocus
-              />
-              {/* Mic button */}
-              {isRecognitionSupported() && (
+            <div className="relative group">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500 to-red-500 rounded-3xl blur opacity-30 group-focus-within:opacity-60 transition duration-300" />
+              <div className="relative bg-[#141920] rounded-3xl shadow-2xl flex items-center px-5 py-4 border border-slate-800">
+                <input
+                  type="text"
+                  value={idleInput}
+                  onChange={(e) => setIdleInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && idleInput.trim()) sendMessage(idleInput);
+                  }}
+                  placeholder="e.g. plumber near Nakawa…"
+                  className="flex-1 bg-transparent text-white text-base placeholder-slate-500 focus:outline-none"
+                  autoFocus
+                />
+                {isRecognitionSupported() && (
+                  <button
+                    onClick={toggleVoice}
+                    className={`ml-3 w-9 h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                      isListening
+                        ? "bg-red-500 animate-pulse"
+                        : "text-orange-500 hover:text-orange-400 hover:bg-orange-500/10"
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2H3v2a9 9 0 008 8.94V23h2v-2.06A9 9 0 0021 12v-2h-2z"/>
+                    </svg>
+                  </button>
+                )}
                 <button
-                  onClick={toggleVoice}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
-                    isListening ? "bg-red-500 animate-pulse" : "hover:bg-[#30363d]"
-                  }`}
+                  onClick={() => idleInput.trim() && sendMessage(idleInput)}
+                  disabled={!idleInput.trim()}
+                  className="ml-2 w-9 h-9 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center disabled:opacity-30 hover:opacity-90 transition-all flex-shrink-0 shadow-lg shadow-orange-500/20"
                 >
-                  <span className="text-base">🎤</span>
+                  <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
                 </button>
-              )}
-              {/* Send button */}
-              <button
-                onClick={() => idleInput.trim() && sendMessage(idleInput)}
-                disabled={!idleInput.trim()}
-                className="w-8 h-8 rounded-full bg-[#25D366] flex items-center justify-center disabled:opacity-30 hover:bg-[#128C7E] transition-colors flex-shrink-0"
-              >
-                <svg viewBox="0 0 24 24" fill="#0d1117" className="w-4 h-4">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                </svg>
-              </button>
+              </div>
             </div>
           </div>
 
-          {/* Suggestion chips */}
-          <div className="w-full max-w-sm mt-6">
-            <p className="text-gray-500 text-xs font-medium uppercase tracking-wider mb-3 text-center">
+          {/* Suggestion pills */}
+          <div className="w-full max-w-sm mt-8">
+            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-4 text-center">
               People often ask…
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-wrap gap-2 justify-center">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s.text}
                   onClick={() => sendMessage(s.text)}
-                  className="flex items-center gap-2 bg-[#161b22] border border-[#30363d] hover:border-[#25D366] hover:bg-[#0d2818] text-gray-300 text-xs px-3 py-2.5 rounded-xl transition-colors text-left"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#141920] border border-slate-700/50 rounded-full text-sm text-slate-300 hover:border-orange-500/50 hover:text-orange-400 transition-all duration-300 hover:scale-[1.02] active:scale-95"
                 >
-                  <span className="text-base flex-shrink-0">{s.emoji}</span>
-                  <span className="leading-tight">{s.text}</span>
+                  <span className="text-base">{s.emoji}</span>
+                  <span>{s.text}</span>
                 </button>
               ))}
             </div>
@@ -377,10 +386,10 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
         <div className="flex-1 flex flex-col overflow-hidden fade-in">
 
           {/* Chat header */}
-          <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-3 flex items-center gap-3 flex-shrink-0">
+          <div className="bg-[#141920] border-b border-slate-800/60 px-4 py-3 flex items-center gap-3 flex-shrink-0">
             <button
               onClick={resetToIdle}
-              className="text-gray-400 hover:text-white transition-colors text-sm flex items-center gap-1"
+              className="text-slate-400 hover:text-white transition-colors flex items-center gap-1"
               title="New chat"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
@@ -388,29 +397,27 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
               </svg>
             </button>
 
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#25D366] to-[#075E54] flex items-center justify-center text-white text-sm font-bold">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-orange-500/20">
               S
             </div>
             <div className="flex-1">
-              <p className="text-white font-semibold text-sm leading-tight">Sokoni</p>
-              <p className="text-[#25D366] text-xs">Market assistant</p>
+              <p className="text-white font-semibold text-sm leading-tight font-display">Sokoni</p>
+              <p className="text-orange-500/80 text-xs">Market assistant</p>
             </div>
 
-            {/* Auto-speak toggle */}
             {isSpeechSupported() && (
               <button
                 onClick={() => { setAutoSpeak((v) => !v); stopSpeaking(); }}
-                className={`text-lg transition-opacity ${autoSpeak ? "opacity-100" : "opacity-30"}`}
+                className={`text-lg transition-opacity ${autoSpeak ? "opacity-100 text-orange-500" : "opacity-30 text-slate-400"}`}
                 title={autoSpeak ? "Mute" : "Auto-read"}
               >
                 🔊
               </button>
             )}
 
-            {/* New chat button */}
             <button
               onClick={resetToIdle}
-              className="text-gray-400 hover:text-[#25D366] transition-colors ml-1"
+              className="text-slate-400 hover:text-orange-500 transition-colors ml-1"
               title="New conversation"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
@@ -421,7 +428,7 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
 
           {/* Server waking banner */}
           {serverWaking && (
-            <div className="bg-yellow-900/40 border-b border-yellow-700/40 px-4 py-2 flex items-center gap-2 text-yellow-300 text-xs flex-shrink-0">
+            <div className="bg-orange-900/30 border-b border-orange-700/30 px-4 py-2 flex items-center gap-2 text-orange-300 text-xs flex-shrink-0">
               <span className="animate-spin">⏳</span>
               <span>Server waking up (~30s). Your message will go through.</span>
               <button onClick={() => setServerWaking(false)} className="ml-auto font-bold">✕</button>
@@ -429,19 +436,19 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
           )}
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-2 bg-[#0d1117]">
+          <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-3 bg-[#0A0E14]">
             {messages.map(renderMessage)}
 
             {/* Typing indicator */}
             {isLoading && (
               <div className="flex items-end gap-2 msg-enter">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#25D366] to-[#075E54] flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-lg shadow-orange-500/20">
                   S
                 </div>
-                <div className="bg-[#161b22] border border-[#30363d] rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">
-                  <div className="typing-dot" />
-                  <div className="typing-dot" />
-                  <div className="typing-dot" />
+                <div className="bg-[#141920] border border-slate-800 rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center">
+                  {[0,1,2].map((i) => (
+                    <div key={i} className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: `${i*150}ms` }} />
+                  ))}
                 </div>
               </div>
             )}
@@ -449,8 +456,8 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
           </div>
 
           {/* Chat input bar */}
-          <div className="bg-[#161b22] border-t border-[#30363d] px-3 py-2 flex items-end gap-2 flex-shrink-0">
-            <div className="flex-1 bg-[#0d1117] border border-[#30363d] rounded-2xl px-4 py-2 flex items-end gap-2 focus-within:border-[#25D366] transition-colors">
+          <div className="bg-[#141920] border-t border-slate-800/60 px-3 py-3 flex items-end gap-2 flex-shrink-0">
+            <div className="flex-1 bg-[#0A0E14] border border-slate-800 rounded-2xl px-4 py-2.5 flex items-end gap-2 focus-within:border-orange-500/40 transition-colors">
               <textarea
                 ref={chatInputRef}
                 rows={1}
@@ -467,7 +474,7 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
                   }
                 }}
                 placeholder="Type a message…"
-                className="flex-1 bg-transparent text-gray-100 text-sm resize-none focus:outline-none max-h-28 leading-relaxed placeholder-gray-600"
+                className="flex-1 bg-transparent text-slate-100 text-sm resize-none focus:outline-none max-h-28 leading-relaxed placeholder-slate-600"
                 style={{ height: "24px" }}
               />
             </div>
@@ -475,20 +482,24 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
             {isRecognitionSupported() && (
               <button
                 onClick={toggleVoice}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
-                  isListening ? "bg-red-500 animate-pulse" : "bg-[#30363d] hover:bg-[#444c56]"
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
+                  isListening
+                    ? "bg-red-500 animate-pulse"
+                    : "bg-[#141920] border border-slate-800 text-orange-500 hover:border-orange-500/40"
                 }`}
               >
-                🎤
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                  <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2H3v2a9 9 0 008 8.94V23h2v-2.06A9 9 0 0021 12v-2h-2z"/>
+                </svg>
               </button>
             )}
 
             <button
               onClick={() => sendMessage(chatInput)}
               disabled={!chatInput.trim() || isLoading}
-              className="w-10 h-10 rounded-full bg-[#25D366] flex items-center justify-center hover:bg-[#128C7E] transition-colors disabled:opacity-30 flex-shrink-0"
+              className="w-10 h-10 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center hover:opacity-90 transition-all disabled:opacity-30 flex-shrink-0 shadow-lg shadow-orange-500/20 active:scale-95"
             >
-              <svg viewBox="0 0 24 24" fill="#0d1117" className="w-5 h-5">
+              <svg viewBox="0 0 24 24" fill="white" className="w-5 h-5">
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
             </button>

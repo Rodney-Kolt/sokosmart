@@ -1,60 +1,69 @@
 /**
- * VendorCard.jsx
- * Displays a single vendor result card inside the chat.
- * Shows name, description, distance, star rating, and a "Request Service" button.
- * No contact info is ever shown.
+ * VendorCard.jsx – Premium vendor result card inside the chat.
+ * Dark surface, emerald accent, integrated CTA.
  */
 
 import React from "react";
 
 function StarRating({ rating }) {
-  const num = parseFloat(rating) || 0;
-  const full  = Math.floor(num);
-  const half  = num - full >= 0.5;
-  const empty = 5 - full - (half ? 1 : 0);
-
+  const num  = parseFloat(rating) || 0;
+  const full = Math.floor(num);
   return (
-    <span className="flex items-center gap-0.5 text-yellow-400 text-sm">
-      {"★".repeat(full)}
-      {half && "½"}
-      <span className="text-gray-300">{"★".repeat(empty)}</span>
-      <span className="text-gray-500 text-xs ml-1">{num.toFixed(1)}</span>
+    <span className="flex items-center gap-0.5">
+      {[1,2,3,4,5].map((s) => (
+        <span key={s} className={`text-sm ${s <= full ? "text-yellow-400" : "text-slate-700"}`}>★</span>
+      ))}
+      <span className="text-slate-400 text-xs ml-1">{num.toFixed(1)}</span>
     </span>
   );
 }
 
 export default function VendorCard({ vendor, onRequest }) {
+  const isOpen = vendor.vstatus === "open" || vendor.vstatus == null;
+
   return (
-    <div className="bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100 w-full">
-      {/* Coloured top strip based on category */}
-      <div className="h-2 bg-gradient-to-r from-sokoni-green to-sokoni-darkgreen" />
+    <div className="bg-[#141920] border border-slate-800 rounded-2xl overflow-hidden w-full shadow-lg">
+      {/* Emerald top strip */}
+      <div className="h-1 bg-gradient-to-r from-emerald-600 to-emerald-400" />
 
       <div className="p-4">
-        {/* Name + category badge */}
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="font-semibold text-gray-900 text-base leading-tight">{vendor.vname}</h3>
-          {vendor.vcategory && (
-            <span className="text-xs bg-green-100 text-sokoni-teal px-2 py-0.5 rounded-full whitespace-nowrap capitalize">
-              {vendor.vcategory}
-            </span>
-          )}
+        {/* Header */}
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-xl flex-shrink-0">
+            🏪
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold text-white text-base leading-tight truncate font-display">
+              {vendor.vname}
+            </h4>
+            <div className="flex items-center gap-2 mt-0.5">
+              <StarRating rating={vendor.vrating} />
+            </div>
+          </div>
+          {/* Open/closed badge */}
+          <span className={`px-2.5 py-1 text-xs font-semibold rounded-full flex-shrink-0 ${
+            isOpen
+              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+              : "bg-slate-800 text-slate-400 border border-slate-700"
+          }`}>
+            {isOpen ? "● Open" : "Closed"}
+          </span>
         </div>
 
         {/* Description */}
-        <p className="text-gray-600 text-sm mb-3 leading-snug">{vendor.vdescription}</p>
+        <p className="text-slate-400 text-sm mb-3 leading-snug line-clamp-2">
+          {vendor.vdescription}
+        </p>
 
-        {/* Distance + rating row */}
-        <div className="flex items-center justify-between mb-4">
-          <span className="flex items-center gap-1 text-gray-500 text-xs">
-            📍 {vendor.vdistance}
-          </span>
-          <StarRating rating={vendor.vrating} />
-        </div>
+        {/* Distance */}
+        <p className="text-slate-500 text-xs mb-4 flex items-center gap-1">
+          <span>📍</span> {vendor.vdistance}
+        </p>
 
-        {/* CTA button */}
+        {/* CTA */}
         <button
           onClick={() => onRequest(vendor)}
-          className="w-full bg-sokoni-green hover:bg-sokoni-darkgreen text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
+          className="w-full py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-semibold rounded-xl text-sm shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:opacity-95 transition-all duration-300 active:scale-[0.98]"
         >
           {vendor.vrequest || "Request Service"}
         </button>
