@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { signUp, signIn, resetPassword } from "../utils/auth";
 import { supabase } from "../utils/supabaseClient";
 import { useAuth } from "../context/AuthContext";
+import OTPFlow from "./OTPFlow";
 
 const VENDOR_CATEGORIES = [
   { label: "Fresh Food",         emoji: "🥦", value: "fresh food" },
@@ -202,20 +203,12 @@ export default function Onboarding({ onDone }) {
   // ── Email verification notice ─────────────────────────────────────────
   if (screen === "verify-notice") {
     return (
-      <div className="min-h-screen bg-[#0A0E14] flex flex-col items-center justify-center px-6 text-center">
-        <div className="text-6xl mb-6">📧</div>
-        <h2 className="text-white font-bold text-2xl mb-2 font-display">Check your inbox!</h2>
-        <p className="text-slate-400 text-sm mb-6 leading-relaxed max-w-xs">
-          We sent a verification link to <strong className="text-white">{email}</strong>.
-          Click it to activate your account.
-        </p>
-        <button
-          onClick={handleGuest}
-          className="w-full max-w-xs py-3 bg-[#141920] border border-slate-800 text-slate-300 rounded-2xl text-sm hover:border-orange-500/40 transition-all"
-        >
-          Continue as Guest for now
-        </button>
-      </div>
+      <OTPFlow
+        prefillEmail={email}
+        hideEmailStep={true}
+        onVerified={() => onDone?.()}
+        onBack={() => setScreen("tabs")}
+      />
     );
   }
 

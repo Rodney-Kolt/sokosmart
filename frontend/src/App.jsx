@@ -24,6 +24,7 @@ import WelcomePage       from "./components/WelcomePage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import Onboarding        from "./components/Onboarding";
 import SignUpPromptModal from "./components/SignUpPromptModal";
+import OTPModal          from "./components/OTPModal";
 import ErrorDashboard   from "./components/ErrorDashboard";
 import { getUnreadCount, getNotificationCount, subscribeToNotifications } from "./utils/api";
 
@@ -41,7 +42,7 @@ function useWakeUpBackend() {
 
 // ── Main tabbed shell (shown when authenticated or guest) ─────────────────
 function MainShell() {
-  const { isGuest, isAuthenticated } = useAuth();
+  const { isGuest, isAuthenticated, otpModal, hideOTPModal } = useAuth();
   const [activeTab,    setActiveTab]    = useState("assistant");
   const [pendingMsg,   setPendingMsg]   = useState(null);
   const [badges,       setBadges]       = useState({ assistant: 0, profile: 0 });
@@ -129,6 +130,17 @@ function MainShell() {
 
       {/* Global sign-up prompt modal */}
       <SignUpPromptModal onCreateAccount={() => setShowOnboard(true)} />
+
+      {/* Global OTP verification modal */}
+      <OTPModal
+        isOpen={otpModal.visible}
+        onClose={hideOTPModal}
+        onVerified={(email) => {
+          otpModal.onVerified?.(email);
+        }}
+        action={otpModal.action}
+        prefillEmail={otpModal.prefillEmail}
+      />
     </div>
   );
 }

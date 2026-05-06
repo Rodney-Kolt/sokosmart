@@ -6,6 +6,11 @@ Connects consumers with nearby vendors via AI-powered chat.
 import os
 import json
 import re
+import secrets
+import smtplib
+import time
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -158,6 +163,129 @@ class ListingStatusUpdate(BaseModel):
 class GenerateDescriptionRequest(BaseModel):
     title: str
     category: Optional[str] = ""
+
+
+class OTPRequest(BaseModel):
+    email: str
+
+
+class OTPVerify(BaseModel):
+    email: str
+    code: str
+
+
+# ── In-memory OTP store ───────────────────────────────────────────────────────
+# { email: { code, expires_at, attempts } }
+_otp_store: dict = {}
+
+
+# ── OTP: Email verification ───────────────────────────────────────────────────
+
+OTP_TTL_SECONDS   = 600   # 10 minutes
+OTP_MAX_ATTEMPTS  = 5
+
+
+def _send_otp_email(to_email: str, code: str):
+    """Send OTP via Brevo SMTP relay."""
+    smtp_host   = os.getenv("BREVO_SMTP_HOST",   "smtp-relay.brevo.com")
+    smtp_port   = int(os.getenv("BREVO_SMTP_PORT", "587"))
+    smtp_user   = os.getenv("BREVO_SMTP_USER",   "")
+    smtp_pass   = os.getenv("BREVO_SMTP_PASS",   "")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", smtp_user)
+    sender_name  = os.getenv("BREVO_SENDER_NAME",  "Sokoni Smart")
+
+    if not smtp_user or not smtp_pass:
+        raise RuntimeError("BREVO_SMTP_USER and BREVO_SMTP_PASS must be set in .env")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"{code} is your Sokoni verification code"
+    msg["From"]    = f"{sender_name} <{sender_email}>"
+    msg["To"]      = to_email
+
+    text_body = f"Your Sokoni verification code is: {code}\n\nThis code expires in 10 minutes. Do not share it with anyone."
+    html_body = f"""
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#0A0E14;color:#fff;padding:32px;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <span style="font-size:40px;">🛍️</span>
+        <h2 style="color:#fff;margin:8px 0 4px;font-size:22px;">Sokoni Smart</h2>
+        <p style="color:#94a3b8;font-size:13px;margin:0;">Your hyperlocal AI marketplace</p>
+      </div>
+      <p style="color:#cbd5e1;font-size:15px;margin-bottom:8px;">Your verification code is:</p>
+      <div style="background:linear-gradient(135deg,#f97316,#ef4444);border-radius:12px;padding:20px;text-align:center;margin:16px 0;">
+        <span style="font-size:40px;font-weight:900;letter-spacing:12px;color:#fff;">{code}</span>
+      </div>
+      <p style="color:#64748b;font-size:13px;text-align:center;">Expires in 10 minutes &nbsp;·&nbsp; Do not share this code</p>
+    </div>
+    """
+
+    msg.attach(MIMEText(text_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(sender_email, to_email, msg.as_string())
+
+
+@app.post("/otp/send")
+async def send_otp(req: OTPRequest):
+    """Generate a 6-digit OTP and email it to the user."""
+    email = req.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    # Rate-limit: if a valid OTP already exists and was issued < 60s ago, reject
+    existing = _otp_store.get(email)
+    if existing and existing["expires_at"] - OTP_TTL_SECONDS + 60 > time.time():
+        raise HTTPException(status_code=429, detail="Please wait before requesting a new code.")
+
+    code = str(secrets.randbelow(900000) + 100000)  # 100000–999999
+    _otp_store[email] = {
+        "code":       code,
+        "expires_at": time.time() + OTP_TTL_SECONDS,
+        "attempts":   0,
+    }
+
+    try:
+        _send_otp_email(email, code)
+    except Exception as e:
+        # Clean up so user can retry
+        _otp_store.pop(email, None)
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+    return {"success": True, "message": "Verification code sent"}
+
+
+@app.post("/otp/verify")
+async def verify_otp(req: OTPVerify):
+    """Verify a 6-digit OTP. Returns success or error."""
+    email = req.email.strip().lower()
+    code  = req.code.strip()
+
+    record = _otp_store.get(email)
+    if not record:
+        raise HTTPException(status_code=400, detail="No code found. Please request a new one.")
+
+    if time.time() > record["expires_at"]:
+        _otp_store.pop(email, None)
+        raise HTTPException(status_code=400, detail="Code expired. Please request a new one.")
+
+    record["attempts"] += 1
+    if record["attempts"] > OTP_MAX_ATTEMPTS:
+        _otp_store.pop(email, None)
+        raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+
+    if record["code"] != code:
+        remaining = OTP_MAX_ATTEMPTS - record["attempts"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid code. {remaining} attempt{'s' if remaining != 1 else ''} remaining."
+        )
+
+    # ✅ Correct — invalidate and return success
+    _otp_store.pop(email, None)
+    return {"success": True, "message": "Email verified successfully"}
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

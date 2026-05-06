@@ -11,6 +11,10 @@
  *   hideSignUp   – function to dismiss the modal
  *   signUpPrompt – { visible, action, message } for the modal
  *   signOutAll   – clears session + localStorage
+ *   showOTPModal – function to open the OTP verification modal
+ *   hideOTPModal – function to close the OTP modal
+ *   otpModal     – { visible, action, prefillEmail } for OTPModal
+ *   isEmailVerified – true once user has completed OTP verification this session
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
@@ -31,6 +35,19 @@ export function AuthProvider({ children }) {
     action:  "",
     message: "Create a free account to continue.",
   });
+
+  // OTP modal state
+  const [otpModal, setOtpModal] = useState({
+    visible:      false,
+    action:       "continue",
+    prefillEmail: "",
+    onVerified:   null,
+  });
+
+  // Track whether the user has verified their email via OTP this session
+  const [isEmailVerified, setIsEmailVerified] = useState(
+    () => sessionStorage.getItem("sokoni_email_verified") === "true"
+  );
 
   // ── Bootstrap: check session on mount ────────────────────────────────
   useEffect(() => {
@@ -109,6 +126,40 @@ export function AuthProvider({ children }) {
     setSignUpPrompt((p) => ({ ...p, visible: false }));
   }
 
+  // ── OTP modal ─────────────────────────────────────────────────────────
+  /**
+   * showOTPModal(action, prefillEmail, onVerified)
+   * Opens the OTP modal. onVerified is called with the verified email.
+   */
+  function showOTPModal(action = "continue", prefillEmail = "", onVerified = null) {
+    setOtpModal({ visible: true, action, prefillEmail, onVerified });
+  }
+
+  function hideOTPModal() {
+    setOtpModal((m) => ({ ...m, visible: false }));
+  }
+
+  function markEmailVerified() {
+    sessionStorage.setItem("sokoni_email_verified", "true");
+    setIsEmailVerified(true);
+  }
+
+  /**
+   * requireEmailVerification(action, onVerified)
+   * If the user hasn't verified their email this session, opens the OTP modal.
+   * Returns true if already verified (caller can proceed), false if modal was shown.
+   */
+  function requireEmailVerification(action, onVerified) {
+    if (isEmailVerified) return true;
+    const email = user?.email || localStorage.getItem("sokoni_email") || "";
+    showOTPModal(action, email, (verifiedEmail) => {
+      markEmailVerified();
+      hideOTPModal();
+      onVerified?.(verifiedEmail);
+    });
+    return false;
+  }
+
   // ── Sign out ──────────────────────────────────────────────────────────
   async function signOutAll() {
     await supabase.auth.signOut();
@@ -139,10 +190,16 @@ export function AuthProvider({ children }) {
       isGuest,
       isLoading,
       isAuthenticated: !!session,
+      isEmailVerified,
       enterGuestMode,
       showSignUp,
       hideSignUp,
       signUpPrompt,
+      otpModal,
+      showOTPModal,
+      hideOTPModal,
+      markEmailVerified,
+      requireEmailVerification,
       signOutAll,
       requireAuth,
     }}>
