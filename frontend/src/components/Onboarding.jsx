@@ -117,13 +117,22 @@ export default function Onboarding({ onDone }) {
       if (uid) {
         localStorage.setItem("sokoni_role",         "consumer");
         localStorage.setItem("sokoni_display_name", displayName.trim());
-        // Store guest id as user id for messaging
         localStorage.setItem("sokoni_guest_id",     uid);
       }
-      // Show email verification notice
-      setScreen("verify-notice");
+      // If email confirmation is required, show notice; otherwise go straight in
+      if (data.user?.confirmed_at || data.session) {
+        onDone?.(); // already confirmed (e.g. email confirmations disabled)
+      } else {
+        setScreen("verify-notice"); // needs email confirmation
+      }
     } catch (err) {
-      setError(err.message || "Registration failed.");
+      const msg = err.message || "";
+      // Supabase SMTP not configured — account may still be created
+      if (msg.includes("sending") || msg.includes("email") || msg.includes("SMTP")) {
+        setError("Account created but confirmation email failed. Check your Supabase SMTP settings, or disable email confirmation in Supabase → Auth → Settings.");
+      } else {
+        setError(msg || "Registration failed.");
+      }
     } finally {
       setLoading(false);
     }

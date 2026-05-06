@@ -24,6 +24,7 @@ import WelcomePage       from "./components/WelcomePage";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import Onboarding        from "./components/Onboarding";
 import SignUpPromptModal from "./components/SignUpPromptModal";
+import ErrorDashboard   from "./components/ErrorDashboard";
 import { getUnreadCount, getNotificationCount, subscribeToNotifications } from "./utils/api";
 
 // ── Keep Render backend awake ─────────────────────────────────────────────
@@ -163,6 +164,7 @@ function InnerApp() {
               {/* Auth redirect pages – no bottom nav, no auth check */}
               <Route path="/welcome"        element={<WelcomePage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/error"          element={<ErrorDashboard />} />
 
               {/* Legacy redirects */}
               <Route path="/dashboard"  element={<Navigate to="/" replace />} />
