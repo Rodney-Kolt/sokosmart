@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import { useAuth } from "../context/AuthContext";
 
 function StarRating({ rating }) {
   const num  = parseFloat(rating) || 0;
@@ -19,7 +20,13 @@ function StarRating({ rating }) {
 }
 
 export default function VendorCard({ vendor, onRequest }) {
+  const { requireAuth } = useAuth();
   const isOpen = vendor.vstatus === "open" || vendor.vstatus == null;
+
+  function handleRequest() {
+    if (!requireAuth("request_service", `To request service from ${vendor.vname}, create a free account.`)) return;
+    onRequest(vendor);
+  }
 
   return (
     <div className="bg-[#141920] border border-slate-800 rounded-2xl overflow-hidden w-full shadow-lg">
@@ -62,7 +69,7 @@ export default function VendorCard({ vendor, onRequest }) {
 
         {/* CTA */}
         <button
-          onClick={() => onRequest(vendor)}
+          onClick={handleRequest}
           className="w-full py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-semibold rounded-xl text-sm shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:opacity-95 transition-all duration-300 active:scale-[0.98]"
         >
           {vendor.vrequest || "Request Service"}
