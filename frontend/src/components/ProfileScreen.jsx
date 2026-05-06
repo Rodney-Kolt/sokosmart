@@ -15,12 +15,14 @@ import Onboarding from "./Onboarding";
 import NotificationsScreen from "./NotificationsScreen";
 import MyListings from "./MyListings";
 import Insights from "./Insights";
+import { useAuth } from "../context/AuthContext";
 import {
-  getFollowers, getFollowing, checkIsFollowing,
-  followVendor, unfollowVendor,
-  trackProfileView, getVendorListings,
+  getFollowers, getFollowing,
+  getVendorListings,
   getNotificationCount, subscribeToNotifications,
 } from "../utils/api";
+
+const REDIRECT_BASE = import.meta.env.VITE_REDIRECT_URL || "https://sokosmart-two.vercel.app";
 
 // ── Stat card ─────────────────────────────────────────────────────────────
 function StatCard({ label, value, onClick }) {
@@ -51,6 +53,7 @@ function Avatar({ name, size = "lg", isOnline = false }) {
 }
 
 export default function ProfileScreen({ onNavigateDashboard }) {
+  const { user, signOutAll } = useAuth();
   const role        = localStorage.getItem("sokoni_role");
   const displayName = localStorage.getItem("sokoni_display_name") || "Guest";
   const vendorId    = localStorage.getItem("sokoni_vendor_id");
@@ -63,6 +66,26 @@ export default function ProfileScreen({ onNavigateDashboard }) {
   const [notifCount, setNotifCount]     = useState(0);
   const [listings, setListings]         = useState([]);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [emailResent,    setEmailResent]    = useState(false);
+
+  // Is email unconfirmed?
+  const emailUnconfirmed = user && !user.email_confirmed_at && !user.confirmed_at;
+
+  async function handleResendConfirmation() {
+    if (!user?.email) return;
+    setResendingEmail(true);
+    try {
+      await supabase.auth.resend({
+        type: "signup",
+        email: user.email,
+        options: { emailRedirectTo: `${REDIRECT_BASE}/welcome` },
+      });
+      setEmailResent(true);
+    } catch { /* silent */ } finally {
+      setResendingEmail(false);
+    }
+  }
 
   // ── Load stats ────────────────────────────────────────────────────────
   const loadStats = useCallback(async () => {
@@ -104,8 +127,7 @@ export default function ProfileScreen({ onNavigateDashboard }) {
   }, [userId, loadStats]);
 
   async function handleSignOut() {
-    await supabase.auth.signOut();
-    ["sokoni_role","sokoni_vendor_id","sokoni_display_name","sokoni_guest_id"].forEach((k) => localStorage.removeItem(k));
+    await signOutAll();
     window.location.reload();
   }
 
@@ -155,6 +177,27 @@ export default function ProfileScreen({ onNavigateDashboard }) {
       </div>
 
       <div className="px-4 py-5 space-y-4">
+
+        {/* ── Unconfirmed email banner ───────────────────────────────── */}
+        {emailUnconfirmed && (
+          <div className="bg-yellow-900/30 border border-yellow-700/40 rounded-2xl p-4">
+            <p className="text-yellow-300 font-semibold text-sm mb-1">📧 Email not confirmed</p>
+            <p className="text-yellow-200/70 text-xs mb-3 leading-relaxed">
+              Check your inbox for a confirmation email from Sokoni Chat.
+            </p>
+            {emailResent ? (
+              <p className="text-emerald-400 text-xs font-medium">✅ New email sent! Check your inbox.</p>
+            ) : (
+              <button
+                onClick={handleResendConfirmation}
+                disabled={resendingEmail}
+                className="text-orange-400 text-xs font-semibold underline hover:text-orange-300 disabled:opacity-50"
+              >
+                {resendingEmail ? "Sending…" : "Resend confirmation email"}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Avatar + name ─────────────────────────────────────────── */}
         <div className="flex items-center gap-4">
