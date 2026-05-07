@@ -70,8 +70,6 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
   const chatInputRef   = useRef(null);
   const audioRef       = useRef(null);
 
-  const [speakingId, setSpeakingId] = useState(null);
-
   // ── Auto-scroll ───────────────────────────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
