@@ -193,7 +193,7 @@ export default function HomeScreen({ onOpenMarket, onOpenAssistant, onOpenOrders
             <h2 className="text-slate-100 font-semibold text-sm">For You</h2>
             <button onClick={onOpenMarket} className="text-orange-500 text-xs hover:underline active:scale-95 transition-all">See all</button>
           </div>
-          <div className="flex gap-3 overflow-x-auto px-5 pb-1 scrollbar-hide">
+          <div className="flex gap-3 overflow-x-auto px-5 pb-1 no-scrollbar">
             {forYouVendors.map((v, i) => (
               <VendorPill key={v.id || i} vendor={v} onClick={onVendorSelect} />
             ))}
@@ -211,7 +211,7 @@ export default function HomeScreen({ onOpenMarket, onOpenAssistant, onOpenOrders
             </div>
             <button onClick={onOpenMarket} className="text-orange-500 text-xs hover:underline active:scale-95 transition-all">See all</button>
           </div>
-          <div className="flex gap-3 overflow-x-auto px-5 pb-1 scrollbar-hide">
+          <div className="flex gap-3 overflow-x-auto px-5 pb-1 no-scrollbar">
             {nearbyVendors.filter((v) => v.status === "open" || v.vstatus === "open").map((v, i) => (
               <VendorPill key={v.id || i} vendor={v} onClick={onVendorSelect} />
             ))}

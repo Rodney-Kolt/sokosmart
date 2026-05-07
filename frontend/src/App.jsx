@@ -30,6 +30,32 @@ import AIAssistantBottomSheet       from "./components/AIAssistantBottomSheet";
 import ErrorDashboard               from "./components/ErrorDashboard";
 import { getNotificationCount, subscribeToNotifications } from "./utils/api";
 
+// ── Error boundary ────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-[#0A0E14] flex flex-col items-center justify-center px-6 text-center">
+          <div className="text-5xl mb-4">⚠️</div>
+          <h2 className="text-white font-bold text-xl mb-2">Something went wrong</h2>
+          <p className="text-red-400 text-sm mb-4 font-mono break-all max-w-sm">
+            {this.state.error?.message || String(this.state.error)}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold rounded-2xl"
+          >
+            Reload App
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Keep Render backend awake ─────────────────────────────────────────────
 function useWakeUpBackend() {
   useEffect(() => {
@@ -217,8 +243,10 @@ function InnerApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <InnerApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <InnerApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
