@@ -7,10 +7,7 @@ import os
 import json
 import re
 import secrets
-import smtplib
 import time
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -282,23 +279,18 @@ OTP_MAX_ATTEMPTS  = 5
 
 
 def _send_otp_email(to_email: str, code: str):
-    """Send OTP via Brevo SMTP relay."""
-    smtp_host   = os.getenv("BREVO_SMTP_HOST",   "smtp-relay.brevo.com")
-    smtp_port   = int(os.getenv("BREVO_SMTP_PORT", "587"))
-    smtp_user   = os.getenv("BREVO_SMTP_USER",   "")
-    smtp_pass   = os.getenv("BREVO_SMTP_PASS",   "")
-    sender_email = os.getenv("BREVO_SENDER_EMAIL", smtp_user)
+    """Send OTP via Brevo Transactional Email API (no IP restrictions)."""
+    import httpx
+
+    api_key      = os.getenv("BREVO_API_KEY", "")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", "")
     sender_name  = os.getenv("BREVO_SENDER_NAME",  "Sokoni Smart")
 
-    if not smtp_user or not smtp_pass:
-        raise RuntimeError("BREVO_SMTP_USER and BREVO_SMTP_PASS must be set in .env")
+    if not api_key:
+        raise RuntimeError("BREVO_API_KEY must be set in .env")
+    if not sender_email:
+        raise RuntimeError("BREVO_SENDER_EMAIL must be set in .env")
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"{code} is your Sokoni verification code"
-    msg["From"]    = f"{sender_name} <{sender_email}>"
-    msg["To"]      = to_email
-
-    text_body = f"Your Sokoni verification code is: {code}\n\nThis code expires in 10 minutes. Do not share it with anyone."
     html_body = f"""
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#0A0E14;color:#fff;padding:32px;border-radius:16px;">
       <div style="text-align:center;margin-bottom:24px;">
@@ -314,14 +306,30 @@ def _send_otp_email(to_email: str, code: str):
     </div>
     """
 
-    msg.attach(MIMEText(text_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
+    payload = {
+        "sender":      {"name": sender_name, "email": sender_email},
+        "to":          [{"email": to_email}],
+        "subject":     f"{code} is your Sokoni verification code",
+        "htmlContent": html_body,
+        "textContent": (
+            f"Your Sokoni verification code is: {code}\n\n"
+            "This code expires in 10 minutes. Do not share it with anyone."
+        ),
+    }
 
-    with smtplib.SMTP(smtp_host, smtp_port) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(smtp_user, smtp_pass)
-        server.sendmail(sender_email, to_email, msg.as_string())
+    resp = httpx.post(
+        "https://api.brevo.com/v3/smtp/email",
+        json=payload,
+        headers={
+            "accept":       "application/json",
+            "content-type": "application/json",
+            "api-key":      api_key,
+        },
+        timeout=15.0,
+    )
+
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(f"Brevo API error {resp.status_code}: {resp.text}")
 
 
 @app.post("/otp/send")
