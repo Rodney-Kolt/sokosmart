@@ -1,33 +1,34 @@
 /**
- * App.jsx – Root component for Sokoni Chat.
+ * App.jsx – Sokoni Smart root component.
  *
- * Auth flow:
- *   isLoading → show LoadingScreen
- *   !session && !isGuest → show Onboarding (full screen, no nav)
- *   session || isGuest → show MainShell (tabs + bottom nav)
+ * Layout:
+ *   Splash → Auth check → AuthWizard (if not logged in) → MainShell
  *
- * The SignUpPromptModal is rendered globally here so it can appear
- * over any screen when a guest tries a gated action.
+ * MainShell:
+ *   Two-tab BottomNav: Home | Profile
+ *   Floating AI Button (FAB) → AIAssistantBottomSheet
+ *   Market opens as full-screen overlay with close button
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import { AuthProvider, useAuth } from "./context/AuthContext";
-import LoadingScreen     from "./components/LoadingScreen";
-import BottomNav         from "./components/BottomNav";
-import MarketScreen      from "./components/MarketScreen";
-import AssistantScreen   from "./components/AssistantScreen";
-import ProfileScreen     from "./components/ProfileScreen";
-import VendorDashboard   from "./components/VendorDashboard";
-import WelcomePage       from "./components/WelcomePage";
-import ResetPasswordPage from "./components/ResetPasswordPage";
-import Onboarding        from "./components/Onboarding";
-import SignUpPromptModal from "./components/SignUpPromptModal";
-import OTPModal          from "./components/OTPModal";
-import AuthWizard        from "./components/auth/AuthWizard";
-import ErrorDashboard   from "./components/ErrorDashboard";
-import { getUnreadCount, getNotificationCount, subscribeToNotifications } from "./utils/api";
+import { AuthProvider, useAuth }    from "./context/AuthContext";
+import LoadingScreen                from "./components/LoadingScreen";
+import BottomNav                    from "./components/BottomNav";
+import HomeScreen                   from "./components/HomeScreen";
+import MarketScreen                 from "./components/MarketScreen";
+import ProfileScreen                from "./components/ProfileScreen";
+import VendorDashboard              from "./components/VendorDashboard";
+import WelcomePage                  from "./components/WelcomePage";
+import ResetPasswordPage            from "./components/ResetPasswordPage";
+import AuthWizard                   from "./components/auth/AuthWizard";
+import SignUpPromptModal            from "./components/SignUpPromptModal";
+import OTPModal                     from "./components/OTPModal";
+import FloatingAIButton             from "./components/FloatingAIButton";
+import AIAssistantBottomSheet       from "./components/AIAssistantBottomSheet";
+import ErrorDashboard               from "./components/ErrorDashboard";
+import { getNotificationCount, subscribeToNotifications } from "./utils/api";
 
 // ── Keep Render backend awake ─────────────────────────────────────────────
 function useWakeUpBackend() {
@@ -41,36 +42,34 @@ function useWakeUpBackend() {
   }, []);
 }
 
-// ── Main tabbed shell (shown when authenticated or guest) ─────────────────
+// ── Main shell ────────────────────────────────────────────────────────────
 function MainShell() {
   const { isGuest, isAuthenticated, otpModal, hideOTPModal } = useAuth();
-  const [activeTab,    setActiveTab]    = useState("assistant");
-  const [pendingMsg,   setPendingMsg]   = useState(null);
-  const [badges,       setBadges]       = useState({ assistant: 0, profile: 0 });
-  const [profileView,  setProfileView]  = useState("profile");
-  const [showOnboard,  setShowOnboard]  = useState(false);
+
+  const [activeTab,      setActiveTab]      = useState("home");
+  const [showMarket,     setShowMarket]      = useState(false);
+  const [showAI,         setShowAI]          = useState(false);
+  const [aiInitialMsg,   setAiInitialMsg]    = useState(null);
+  const [profileView,    setProfileView]     = useState("profile");
+  const [showOnboard,    setShowOnboard]     = useState(false);
+  const [badges,         setBadges]          = useState({ home: 0, profile: 0 });
 
   const userId = localStorage.getItem("sokoni_guest_id") || localStorage.getItem("sokoni_vendor_id") || "";
-  const role   = localStorage.getItem("sokoni_role") || "consumer";
 
   // ── Badge polling ─────────────────────────────────────────────────────
-  const pollUnread = useCallback(async () => {
+  const pollBadges = useCallback(async () => {
     if (!userId) return;
-    try {
-      const c = await getUnreadCount(userId, role);
-      setBadges((p) => ({ ...p, assistant: c }));
-    } catch { /* silent */ }
     try {
       const n = await getNotificationCount(userId);
       setBadges((p) => ({ ...p, profile: n }));
     } catch { /* silent */ }
-  }, [userId, role]);
+  }, [userId]);
 
   useEffect(() => {
-    pollUnread();
-    const iv = setInterval(pollUnread, 10000);
+    pollBadges();
+    const iv = setInterval(pollBadges, 15000);
     return () => clearInterval(iv);
-  }, [pollUnread]);
+  }, [pollBadges]);
 
   useEffect(() => {
     if (!userId) return;
@@ -84,20 +83,16 @@ function MainShell() {
   }, [userId]);
 
   useEffect(() => {
-    if (activeTab === "assistant") setBadges((p) => ({ ...p, assistant: 0 }));
-    if (activeTab === "profile")   setBadges((p) => ({ ...p, profile: 0 }));
+    if (activeTab === "profile") setBadges((p) => ({ ...p, profile: 0 }));
   }, [activeTab]);
 
-  useEffect(() => {
-    if (activeTab !== "profile") setProfileView("profile");
-  }, [activeTab]);
-
-  function handleSendToAssistant(msg) {
-    setPendingMsg(msg);
-    setActiveTab("assistant");
+  // ── AI sheet helpers ──────────────────────────────────────────────────
+  function openAssistant(msg = "") {
+    setAiInitialMsg(msg || null);
+    setShowAI(true);
   }
 
-  // Onboarding overlay (triggered from SignUpPromptModal "Create Account")
+  // ── Auth wizard overlay ───────────────────────────────────────────────
   if (showOnboard) {
     return (
       <div className="flex flex-col h-full bg-[#0A0E14]">
@@ -108,37 +103,66 @@ function MainShell() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0 relative">
 
-        {activeTab === "market" && (
-          <MarketScreen onSendToAssistant={handleSendToAssistant} />
-        )}
+        {/* ── Home tab ─────────────────────────────────────────────── */}
+        <div className={`absolute inset-0 ${activeTab === "home" ? "block" : "hidden"}`}>
+          <HomeScreen
+            onOpenMarket={() => setShowMarket(true)}
+            onOpenAssistant={openAssistant}
+            onOpenOrders={() => setActiveTab("profile")}
+            onVendorSelect={(vendor) => {
+              openAssistant(`Tell me about ${vendor.name || vendor.vname}, a ${vendor.category || vendor.vcategory} vendor`);
+            }}
+          />
+        </div>
 
-        <AssistantScreen
-          visible={activeTab === "assistant"}
-          initialMessage={activeTab === "assistant" ? pendingMsg : null}
-          onInitialMessageConsumed={() => setPendingMsg(null)}
-        />
-
+        {/* ── Profile tab ──────────────────────────────────────────── */}
         {activeTab === "profile" && (
           profileView === "dashboard"
             ? <VendorDashboard onBack={() => setProfileView("profile")} />
             : <ProfileScreen onNavigateDashboard={() => { setProfileView("dashboard"); setActiveTab("profile"); }} />
         )}
+
+        {/* ── Market full-screen overlay ────────────────────────────── */}
+        {showMarket && (
+          <div className="absolute inset-0 z-30 bg-[#0d1117]">
+            <MarketScreen
+              onSendToAssistant={(msg) => { setShowMarket(false); openAssistant(msg); }}
+              onClose={() => setShowMarket(false)}
+            />
+          </div>
+        )}
       </div>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} badges={badges} />
+      {/* ── Bottom nav ───────────────────────────────────────────────── */}
+      <BottomNav
+        activeTab={activeTab}
+        setActiveTab={(tab) => { setActiveTab(tab); if (tab !== "profile") setProfileView("profile"); }}
+        badges={badges}
+      />
 
-      {/* Global sign-up prompt modal */}
+      {/* ── Floating AI button ────────────────────────────────────────── */}
+      {!showMarket && !showAI && (
+        <FloatingAIButton onClick={() => openAssistant("")} />
+      )}
+
+      {/* ── AI assistant bottom sheet ─────────────────────────────────── */}
+      <AIAssistantBottomSheet
+        isOpen={showAI}
+        onClose={() => setShowAI(false)}
+        initialMessage={aiInitialMsg}
+        onInitialMessageConsumed={() => setAiInitialMsg(null)}
+      />
+
+      {/* ── Global sign-up prompt modal ───────────────────────────────── */}
       <SignUpPromptModal onCreateAccount={() => setShowOnboard(true)} />
 
-      {/* Global OTP verification modal */}
+      {/* ── Global OTP modal ──────────────────────────────────────────── */}
       <OTPModal
         isOpen={otpModal.visible}
         onClose={hideOTPModal}
-        onVerified={(email) => {
-          otpModal.onVerified?.(email);
-        }}
+        onVerified={(email) => { otpModal.onVerified?.(email); }}
         action={otpModal.action}
         prefillEmail={otpModal.prefillEmail}
       />
@@ -146,14 +170,13 @@ function MainShell() {
   );
 }
 
-// ── Inner app (has access to AuthContext) ─────────────────────────────────
+// ── Inner app ─────────────────────────────────────────────────────────────
 function InnerApp() {
   const { isLoading, isAuthenticated, isGuest } = useAuth();
-  const [splashDone, setSplashDone] = useState(false);
+  const [splashDone,  setSplashDone]  = useState(false);
   const [showOnboard, setShowOnboard] = useState(false);
   useWakeUpBackend();
 
-  // After splash, decide what to show
   useEffect(() => {
     if (splashDone && !isLoading && !isAuthenticated && !isGuest) {
       setShowOnboard(true);
@@ -164,7 +187,6 @@ function InnerApp() {
 
   return (
     <>
-      {/* Splash screen */}
       {!splashDone && <LoadingScreen onDone={() => setSplashDone(true)} />}
 
       <div
@@ -174,17 +196,12 @@ function InnerApp() {
         <div className="w-full max-w-md bg-[#0A0E14] h-full flex flex-col shadow-2xl overflow-hidden">
           <BrowserRouter>
             <Routes>
-              {/* Auth redirect pages – no bottom nav, no auth check */}
               <Route path="/welcome"        element={<WelcomePage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/error"          element={<ErrorDashboard />} />
-
-              {/* Legacy redirects */}
-              <Route path="/dashboard"  element={<Navigate to="/" replace />} />
-              <Route path="/chat"       element={<Navigate to="/" replace />} />
-              <Route path="/onboarding" element={<Navigate to="/" replace />} />
-
-              {/* Main app */}
+              <Route path="/dashboard"      element={<Navigate to="/" replace />} />
+              <Route path="/chat"           element={<Navigate to="/" replace />} />
+              <Route path="/onboarding"     element={<Navigate to="/" replace />} />
               <Route path="/*" element={
                 showOnboard
                   ? <AuthWizard onDone={() => setShowOnboard(false)} />
@@ -198,7 +215,6 @@ function InnerApp() {
   );
 }
 
-// ── Root export ───────────────────────────────────────────────────────────
 export default function App() {
   return (
     <AuthProvider>

@@ -26,6 +26,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [session,   setSession]   = useState(null);
   const [user,      setUser]      = useState(null);
+  const [profile,   setProfile]   = useState(null); // from profiles table
   const [isGuest,   setIsGuest]   = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -57,15 +58,27 @@ export function AuthProvider({ children }) {
         if (data.session) {
           setSession(data.session);
           setUser(data.session.user);
-          // Sync localStorage role from session
           const uid = data.session.user.id;
+
+          // Fetch profile from profiles table
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", uid)
+            .maybeSingle();
+          if (prof) {
+            setProfile(prof);
+            localStorage.setItem("sokoni_display_name", prof.display_name || data.session.user.email?.split("@")[0] || "User");
+            if (prof.role) localStorage.setItem("sokoni_role", prof.role);
+          }
+
+          // Sync vendor status if not already set
           if (!localStorage.getItem("sokoni_vendor_id")) {
-            // Check if this user is a vendor
             const { data: vendor } = await supabase
               .from("vendors")
               .select("owner_id, name")
               .eq("owner_id", uid)
-              .single();
+              .maybeSingle();
             if (vendor) {
               localStorage.setItem("sokoni_role",         "vendor");
               localStorage.setItem("sokoni_vendor_id",    uid);
@@ -73,12 +86,8 @@ export function AuthProvider({ children }) {
             }
           }
         } else {
-          // No session — check for guest UUID
           const guestId = localStorage.getItem("sokoni_guest_id");
-          if (guestId) {
-            setIsGuest(true);
-          }
-          // If neither, isGuest stays false → show onboarding
+          if (guestId) setIsGuest(true);
         }
       } catch { /* silent */ } finally {
         setIsLoading(false);
@@ -86,16 +95,27 @@ export function AuthProvider({ children }) {
     }
     bootstrap();
 
-    // Listen for auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         if (event === "SIGNED_IN" && newSession) {
           setSession(newSession);
           setUser(newSession.user);
           setIsGuest(false);
+          // Fetch profile on sign-in
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", newSession.user.id)
+            .maybeSingle();
+          if (prof) {
+            setProfile(prof);
+            localStorage.setItem("sokoni_display_name", prof.display_name || newSession.user.email?.split("@")[0] || "User");
+            if (prof.role) localStorage.setItem("sokoni_role", prof.role);
+          }
         } else if (event === "SIGNED_OUT") {
           setSession(null);
           setUser(null);
+          setProfile(null);
           setIsGuest(false);
         } else if (event === "TOKEN_REFRESHED" && newSession) {
           setSession(newSession);
@@ -165,10 +185,11 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
     [
       "sokoni_role", "sokoni_vendor_id", "sokoni_display_name",
-      "sokoni_guest_id", "sokoni_lat", "sokoni_lng",
+      "sokoni_guest_id", "sokoni_lat", "sokoni_lng", "sokoni_verified_email",
     ].forEach((k) => localStorage.removeItem(k));
     setSession(null);
     setUser(null);
+    setProfile(null);
     setIsGuest(false);
   }
 
@@ -187,6 +208,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       session,
       user,
+      profile,
       isGuest,
       isLoading,
       isAuthenticated: !!session,
