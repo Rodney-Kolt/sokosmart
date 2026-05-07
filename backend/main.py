@@ -14,7 +14,9 @@ from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
 
-from gemini_utils import get_gemini_response
+from deepseek_utils import (
+    get_gemini_response,   # kept as get_gemini_response for compatibility
+)
 from db_utils import (
     search_vendors,
     save_message,
@@ -789,7 +791,7 @@ async def update_listing(listing_id: str, req: ListingStatusUpdate):
 
 @app.post("/generate-listing-description")
 async def generate_description(req: GenerateDescriptionRequest):
-    """Use Gemini to generate a compelling listing description."""
+    """Use DeepSeek to generate a compelling listing description."""
     try:
         prompt = (
             f"Write a short, compelling product/service listing description (2-3 sentences) "
@@ -798,12 +800,15 @@ async def generate_description(req: GenerateDescriptionRequest):
             f"Be friendly, specific, and mention quality. Do not use emojis. "
             f"Return only the description text, nothing else."
         )
-        from gemini_utils import _client, types
-        response = await _client.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-        )
-        return {"description": response.text.strip()}
+        text = await get_gemini_response(prompt, [])
+        # Strip any JSON wrapping if the model returns it
+        import json as _json
+        try:
+            parsed = _json.loads(text)
+            text = parsed.get("reply", text)
+        except Exception:
+            pass
+        return {"description": text.strip()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
