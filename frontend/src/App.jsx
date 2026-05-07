@@ -2,33 +2,31 @@
  * App.jsx – Sokoni Smart root component.
  *
  * Layout:
- *   Splash → Auth check → AuthWizard (if not logged in) → MainShell
+ *   Splash → Auth check → AuthWizard (unauthenticated) → MainShell (3-tab)
  *
- * MainShell:
- *   Two-tab BottomNav: Home | Profile
- *   Floating AI Button (FAB) → AIAssistantBottomSheet
- *   Market opens as full-screen overlay with close button
+ * MainShell tabs:
+ *   market    → MarketScreen  (TikTok-style vendor reels)
+ *   assistant → AssistantScreen (AI chat)
+ *   profile   → ProfileScreen / VendorDashboard
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import { AuthProvider, useAuth }    from "./context/AuthContext";
-import LoadingScreen                from "./components/LoadingScreen";
-import BottomNav                    from "./components/BottomNav";
-import HomeScreen                   from "./components/HomeScreen";
-import MarketScreen                 from "./components/MarketScreen";
-import ProfileScreen                from "./components/ProfileScreen";
-import VendorDashboard              from "./components/VendorDashboard";
-import WelcomePage                  from "./components/WelcomePage";
-import ResetPasswordPage            from "./components/ResetPasswordPage";
-import AuthWizard                   from "./components/auth/AuthWizard";
-import SignUpPromptModal            from "./components/SignUpPromptModal";
-import OTPModal                     from "./components/OTPModal";
-import FloatingAIButton             from "./components/FloatingAIButton";
-import AIAssistantBottomSheet       from "./components/AIAssistantBottomSheet";
-import ErrorDashboard               from "./components/ErrorDashboard";
-import { getNotificationCount, subscribeToNotifications } from "./utils/api";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import LoadingScreen     from "./components/LoadingScreen";
+import BottomNav         from "./components/BottomNav";
+import MarketScreen      from "./components/MarketScreen";
+import AssistantScreen   from "./components/AssistantScreen";
+import ProfileScreen     from "./components/ProfileScreen";
+import VendorDashboard   from "./components/VendorDashboard";
+import WelcomePage       from "./components/WelcomePage";
+import ResetPasswordPage from "./components/ResetPasswordPage";
+import AuthWizard        from "./components/auth/AuthWizard";
+import SignUpPromptModal from "./components/SignUpPromptModal";
+import OTPModal          from "./components/OTPModal";
+import ErrorDashboard    from "./components/ErrorDashboard";
+import { getUnreadCount, getNotificationCount, subscribeToNotifications } from "./utils/api";
 
 // ── Error boundary ────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -68,34 +66,37 @@ function useWakeUpBackend() {
   }, []);
 }
 
-// ── Main shell ────────────────────────────────────────────────────────────
+// ── Main three-tab shell ──────────────────────────────────────────────────
 function MainShell() {
-  const { isGuest, isAuthenticated, otpModal, hideOTPModal } = useAuth();
+  const { otpModal, hideOTPModal } = useAuth();
 
-  const [activeTab,      setActiveTab]      = useState("home");
-  const [showMarket,     setShowMarket]      = useState(false);
-  const [showAI,         setShowAI]          = useState(false);
-  const [aiInitialMsg,   setAiInitialMsg]    = useState(null);
-  const [profileView,    setProfileView]     = useState("profile");
-  const [showOnboard,    setShowOnboard]     = useState(false);
-  const [badges,         setBadges]          = useState({ home: 0, profile: 0 });
+  const [activeTab,   setActiveTab]   = useState("assistant");
+  const [pendingMsg,  setPendingMsg]  = useState(null);
+  const [badges,      setBadges]      = useState({ assistant: 0, profile: 0 });
+  const [profileView, setProfileView] = useState("profile");
+  const [showOnboard, setShowOnboard] = useState(false);
 
   const userId = localStorage.getItem("sokoni_guest_id") || localStorage.getItem("sokoni_vendor_id") || "";
+  const role   = localStorage.getItem("sokoni_role") || "consumer";
 
   // ── Badge polling ─────────────────────────────────────────────────────
-  const pollBadges = useCallback(async () => {
+  const pollUnread = useCallback(async () => {
     if (!userId) return;
+    try {
+      const c = await getUnreadCount(userId, role);
+      setBadges((p) => ({ ...p, assistant: c }));
+    } catch { /* silent */ }
     try {
       const n = await getNotificationCount(userId);
       setBadges((p) => ({ ...p, profile: n }));
     } catch { /* silent */ }
-  }, [userId]);
+  }, [userId, role]);
 
   useEffect(() => {
-    pollBadges();
-    const iv = setInterval(pollBadges, 15000);
+    pollUnread();
+    const iv = setInterval(pollUnread, 10000);
     return () => clearInterval(iv);
-  }, [pollBadges]);
+  }, [pollUnread]);
 
   useEffect(() => {
     if (!userId) return;
@@ -109,16 +110,20 @@ function MainShell() {
   }, [userId]);
 
   useEffect(() => {
-    if (activeTab === "profile") setBadges((p) => ({ ...p, profile: 0 }));
+    if (activeTab === "assistant") setBadges((p) => ({ ...p, assistant: 0 }));
+    if (activeTab === "profile")   setBadges((p) => ({ ...p, profile: 0 }));
   }, [activeTab]);
 
-  // ── AI sheet helpers ──────────────────────────────────────────────────
-  function openAssistant(msg = "") {
-    setAiInitialMsg(msg || null);
-    setShowAI(true);
+  useEffect(() => {
+    if (activeTab !== "profile") setProfileView("profile");
+  }, [activeTab]);
+
+  function handleSendToAssistant(msg) {
+    setPendingMsg(msg);
+    setActiveTab("assistant");
   }
 
-  // ── Auth wizard overlay ───────────────────────────────────────────────
+  // Auth wizard overlay (triggered from SignUpPromptModal)
   if (showOnboard) {
     return (
       <div className="flex flex-col h-full bg-[#0A0E14]">
@@ -129,62 +134,34 @@ function MainShell() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-hidden flex flex-col min-h-0 relative">
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
 
-        {/* ── Home tab ─────────────────────────────────────────────── */}
-        <div className={`absolute inset-0 ${activeTab === "home" ? "block" : "hidden"}`}>
-          <HomeScreen
-            onOpenMarket={() => setShowMarket(true)}
-            onOpenAssistant={openAssistant}
-            onOpenOrders={() => setActiveTab("profile")}
-            onVendorSelect={(vendor) => {
-              openAssistant(`Tell me about ${vendor.name || vendor.vname}, a ${vendor.category || vendor.vcategory} vendor`);
-            }}
-          />
-        </div>
+        {/* Market tab */}
+        {activeTab === "market" && (
+          <MarketScreen onSendToAssistant={handleSendToAssistant} />
+        )}
 
-        {/* ── Profile tab ──────────────────────────────────────────── */}
+        {/* Assistant tab — always mounted, shown/hidden via visible prop */}
+        <AssistantScreen
+          visible={activeTab === "assistant"}
+          initialMessage={activeTab === "assistant" ? pendingMsg : null}
+          onInitialMessageConsumed={() => setPendingMsg(null)}
+        />
+
+        {/* Profile tab */}
         {activeTab === "profile" && (
           profileView === "dashboard"
             ? <VendorDashboard onBack={() => setProfileView("profile")} />
             : <ProfileScreen onNavigateDashboard={() => { setProfileView("dashboard"); setActiveTab("profile"); }} />
         )}
-
-        {/* ── Market full-screen overlay ────────────────────────────── */}
-        {showMarket && (
-          <div className="absolute inset-0 z-30 bg-[#0d1117]">
-            <MarketScreen
-              onSendToAssistant={(msg) => { setShowMarket(false); openAssistant(msg); }}
-              onClose={() => setShowMarket(false)}
-            />
-          </div>
-        )}
       </div>
 
-      {/* ── Bottom nav ───────────────────────────────────────────────── */}
-      <BottomNav
-        activeTab={activeTab}
-        setActiveTab={(tab) => { setActiveTab(tab); if (tab !== "profile") setProfileView("profile"); }}
-        badges={badges}
-      />
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} badges={badges} />
 
-      {/* ── Floating AI button ────────────────────────────────────────── */}
-      {!showMarket && !showAI && (
-        <FloatingAIButton onClick={() => openAssistant("")} />
-      )}
-
-      {/* ── AI assistant bottom sheet ─────────────────────────────────── */}
-      <AIAssistantBottomSheet
-        isOpen={showAI}
-        onClose={() => setShowAI(false)}
-        initialMessage={aiInitialMsg}
-        onInitialMessageConsumed={() => setAiInitialMsg(null)}
-      />
-
-      {/* ── Global sign-up prompt modal ───────────────────────────────── */}
+      {/* Global sign-up prompt modal */}
       <SignUpPromptModal onCreateAccount={() => setShowOnboard(true)} />
 
-      {/* ── Global OTP modal ──────────────────────────────────────────── */}
+      {/* Global OTP modal */}
       <OTPModal
         isOpen={otpModal.visible}
         onClose={hideOTPModal}

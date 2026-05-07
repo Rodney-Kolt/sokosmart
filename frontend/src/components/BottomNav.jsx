@@ -1,13 +1,14 @@
 /**
- * BottomNav.jsx – Two-tab bottom navigation: Home | Profile
+ * BottomNav.jsx – Three-tab bottom navigation: Market | Assistant | Profile
+ * Frosted glass, orange active accent.
  */
 
 import React from "react";
 
 const TABS = [
   {
-    id: "home",
-    label: "Home",
+    id: "market",
+    label: "Market",
     icon: (active) => (
       <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
         <path
@@ -17,6 +18,20 @@ const TABS = [
           strokeWidth="1.5" strokeLinejoin="round"
         />
         <path d="M9 21V12h6v9" stroke={active ? "#f97316" : "#64748b"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "assistant",
+    label: "Assistant",
+    icon: (active) => (
+      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
+        <path
+          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          stroke={active ? "#f97316" : "#64748b"}
+          strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+          fill={active ? "rgba(249,115,22,0.08)" : "transparent"}
+        />
       </svg>
     ),
   },
@@ -36,7 +51,7 @@ export default function BottomNav({ activeTab, setActiveTab, badges = {} }) {
   return (
     <div
       className="flex-shrink-0 border-t border-slate-800/50 bottom-nav-safe"
-      style={{ background: "rgba(20,25,32,0.95)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
+      style={{ background: "rgba(20,25,32,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
     >
       <div className="flex items-center justify-around h-16 max-w-md mx-auto">
         {TABS.map((tab) => {

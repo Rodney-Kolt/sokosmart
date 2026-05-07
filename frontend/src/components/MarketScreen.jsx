@@ -425,7 +425,7 @@ function VendorSlide({ vendor, onAsk, onRequest, onOpenSheet, isActive }) {
 }
 
 // ── Main MarketScreen ─────────────────────────────────────────────────────
-export default function MarketScreen({ onSendToAssistant, onClose }) {
+export default function MarketScreen({ onSendToAssistant }) {
   const [vendors, setVendors]         = useState([]);
   const [filtered, setFiltered]       = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -555,17 +555,7 @@ export default function MarketScreen({ onSendToAssistant, onClose }) {
       <div className="absolute top-0 left-0 right-0 z-20 px-4 pt-3 pb-2"
         style={{ background: "linear-gradient(to bottom, rgba(13,17,23,0.95) 70%, transparent)" }}
       >
-        {/* Close button */}
-        {onClose && (
-          <button
-            onClick={onClose}
-            aria-label="Close market"
-            className="absolute top-4 left-4 z-30 w-9 h-9 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white hover:bg-black/80 active:scale-95 transition-all"
-          >
-            ✕
-          </button>
-        )}
-        <div className={`flex items-center gap-2 bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 focus-within:border-[#25D366]/60 transition-colors ${onClose ? "ml-11" : ""}`}>
+        <div className="flex items-center gap-2 bg-black/50 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2.5 focus-within:border-[#25D366]/60 transition-colors">
           {/* Search icon */}
           <svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" className="w-4 h-4 flex-shrink-0">
             <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35" strokeLinecap="round"/>
