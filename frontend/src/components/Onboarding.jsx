@@ -9,7 +9,9 @@ import { v4 as uuidv4 } from "uuid";
 import { signUp, signIn, resetPassword } from "../utils/auth";
 import { supabase } from "../utils/supabaseClient";
 import { useAuth } from "../context/AuthContext";
-import OTPFlow from "./OTPFlow";
+import OTPFlow   from "./OTPFlow";
+import EmailOTP  from "./EmailOTP";
+import PhoneAuth from "./PhoneAuth";
 
 const VENDOR_CATEGORIES = [
   { label: "Fresh Food",         emoji: "🥦", value: "fresh food" },
@@ -45,7 +47,8 @@ export default function Onboarding({ onDone }) {
 
   // "tabs" | "login" | "register" | "vendor-category" | "vendor-details" | "forgot"
   const [screen, setScreen]   = useState("tabs");
-  const [tab,    setTab]      = useState("login"); // login | register
+  const [tab,    setTab]      = useState("email-otp"); // email-otp | phone | password
+  const [subTab, setSubTab]   = useState("login");     // login | register (under password tab)
 
   // Form fields
   const [email,        setEmail]        = useState("");
@@ -288,78 +291,123 @@ export default function Onboarding({ onDone }) {
 
   // ── Main tabs: Login / Register ───────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0A0E14] flex flex-col items-center justify-center px-5 py-8">
+    <div className="min-h-screen bg-[#0A0E14] flex flex-col items-center justify-center px-5 py-8 overflow-y-auto">
       <div className="w-full max-w-sm">
         <Header title="Welcome to Sokoni" subtitle="Your hyperlocal AI marketplace" />
 
-        {/* Tab switcher */}
+        {/* ── Auth method tabs: Email OTP | Phone | Password ── */}
         <div className="flex bg-[#141920] rounded-2xl p-1 mb-6 border border-slate-800">
-          {["login","register"].map((t) => (
-            <button key={t} onClick={() => { setTab(t); clearError(); }}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 capitalize ${
-                tab === t
+          {[
+            { id: "email-otp", label: "📧 Email" },
+            { id: "phone",     label: "📱 Phone" },
+            { id: "password",  label: "🔑 Password" },
+          ].map((m) => (
+            <button
+              key={m.id}
+              onClick={() => { setTab(m.id); clearError(); }}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all duration-300 ${
+                tab === m.id
                   ? "bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/20"
                   : "text-slate-400 hover:text-white"
-              }`}>
-              {t === "login" ? "Sign In" : "Register"}
+              }`}
+            >
+              {m.label}
             </button>
           ))}
         </div>
 
-        {/* ── Login form ─────────────────────────────────────────────── */}
-        {tab === "login" && (
-          <div className="space-y-3">
-            <input className={inputCls} type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className={inputCls} type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
-            <button onClick={() => { setScreen("forgot"); clearError(); }} className="text-orange-500 text-xs text-right w-full hover:underline">
-              Forgot password?
-            </button>
-            {error && <p className="text-red-400 text-sm">{error}</p>}
-            <button onClick={handleLogin} disabled={loading}
-              className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/20 hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50">
-              {loading ? "Signing in…" : "Sign In →"}
-            </button>
-          </div>
+        {/* ── Email OTP ──────────────────────────────────────── */}
+        {tab === "email-otp" && (
+          <EmailOTP
+            onVerified={() => onDone?.()}
+            onBack={() => setTab("password")}
+          />
         )}
 
-        {/* ── Register form ──────────────────────────────────────────── */}
-        {tab === "register" && (
-          <div className="space-y-3">
-            <input className={inputCls} placeholder="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-            <input className={inputCls} type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className={inputCls} type="password" placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {/* ── Phone OTP ──────────────────────────────────────── */}
+        {tab === "phone" && (
+          <PhoneAuth
+            onVerified={() => onDone?.()}
+            onBack={() => setTab("email-otp")}
+          />
+        )}
 
-            {/* Role selector */}
-            <div className="flex gap-2">
-              {[
-                { v: "consumer", label: "🛒 Consumer", sub: "Find services" },
-                { v: "vendor",   label: "🏪 Vendor",   sub: "Sell services" },
-              ].map((r) => (
-                <button key={r.v} onClick={() => setRole(r.v)}
-                  className={`flex-1 py-3 rounded-2xl border text-sm transition-all ${
-                    role === r.v
-                      ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
-                      : "border-slate-800 bg-[#141920] text-slate-400 hover:border-slate-600"
-                  }`}>
-                  <div className="font-semibold">{r.label}</div>
-                  <div className="text-xs opacity-70">{r.sub}</div>
+        {/* ── Password login / register ───────────────────────── */}
+        {tab === "password" && (
+          <>
+            {/* Login / Register sub-tabs */}
+            <div className="flex bg-[#0A0E14] rounded-2xl p-1 mb-5 border border-slate-800">
+              {["login", "register"].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => { setSubTab(t); clearError(); }}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all duration-300 capitalize ${
+                    subTab === t
+                      ? "bg-slate-700 text-white"
+                      : "text-slate-500 hover:text-white"
+                  }`}
+                >
+                  {t === "login" ? "Sign In" : "Register"}
                 </button>
               ))}
             </div>
 
-            {error && <p className="text-red-400 text-sm">{error}</p>}
+            {/* Login form */}
+            {subTab === "login" && (
+              <div className="space-y-3">
+                <input className={inputCls} type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <input className={inputCls} type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()} />
+                <button onClick={() => { setScreen("forgot"); clearError(); }} className="text-orange-500 text-xs text-right w-full hover:underline">
+                  Forgot password?
+                </button>
+                {error && <p className="text-red-400 text-sm">{error}</p>}
+                <button onClick={handleLogin} disabled={loading}
+                  className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/20 hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50">
+                  {loading ? "Signing in…" : "Sign In →"}
+                </button>
+              </div>
+            )}
 
-            <button
-              onClick={() => {
-                if (role === "vendor") { setScreen("vendor-category"); clearError(); }
-                else handleRegisterConsumer();
-              }}
-              disabled={loading}
-              className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/20 hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50">
-              {loading ? "Creating account…" : role === "vendor" ? "Next: Business Details →" : "Create Account →"}
-            </button>
-          </div>
+            {/* Register form */}
+            {subTab === "register" && (
+              <div className="space-y-3">
+                <input className={inputCls} placeholder="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+                <input className={inputCls} type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <input className={inputCls} type="password" placeholder="Create a password" value={password} onChange={(e) => setPassword(e.target.value)} />
+
+                {/* Role selector */}
+                <div className="flex gap-2">
+                  {[
+                    { v: "consumer", label: "🛒 Consumer", sub: "Find services" },
+                    { v: "vendor",   label: "🏪 Vendor",   sub: "Sell services" },
+                  ].map((r) => (
+                    <button key={r.v} onClick={() => setRole(r.v)}
+                      className={`flex-1 py-3 rounded-2xl border text-sm transition-all ${
+                        role === r.v
+                          ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
+                          : "border-slate-800 bg-[#141920] text-slate-400 hover:border-slate-600"
+                      }`}>
+                      <div className="font-semibold">{r.label}</div>
+                      <div className="text-xs opacity-70">{r.sub}</div>
+                    </button>
+                  ))}
+                </div>
+
+                {error && <p className="text-red-400 text-sm">{error}</p>}
+
+                <button
+                  onClick={() => {
+                    if (role === "vendor") { setScreen("vendor-category"); clearError(); }
+                    else handleRegisterConsumer();
+                  }}
+                  disabled={loading}
+                  className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/20 hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50">
+                  {loading ? "Creating account…" : role === "vendor" ? "Next: Business Details →" : "Create Account →"}
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* Divider */}
