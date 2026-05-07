@@ -23,7 +23,7 @@ const TABS = [
   },
   {
     id: "assistant",
-    label: "Assistant",
+    label: "Chat",
     icon: (active) => (
       <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
         <path

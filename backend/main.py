@@ -8,6 +8,7 @@ import json
 import re
 import secrets
 import time
+import base64
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -404,6 +405,91 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "OK", "service": "Sokoni Chat API", "awake": True}
+
+
+# ── Text-to-Speech (Google Cloud TTS) ────────────────────────────────────────
+
+class TTSRequest(BaseModel):
+    text: str
+    language: Optional[str] = "en"   # "luganda", "swahili", "english", or BCP-47 code
+
+
+# Language code mapping
+_LANG_MAP = {
+    "luganda":  ("lg-UG", "lg-UG-Standard-A", "FEMALE"),
+    "swahili":  ("sw-KE", "sw-KE-Standard-A", "FEMALE"),
+    "english":  ("en-US", "en-US-Neural2-F",  "FEMALE"),
+    "en":       ("en-US", "en-US-Neural2-F",  "FEMALE"),
+    "sw":       ("sw-KE", "sw-KE-Standard-A", "FEMALE"),
+    "lg":       ("lg-UG", "lg-UG-Standard-A", "FEMALE"),
+}
+_DEFAULT_LANG = ("en-US", "en-US-Neural2-F", "FEMALE")
+
+
+@app.post("/api/tts")
+async def text_to_speech(req: TTSRequest):
+    """
+    Convert text to speech using Google Cloud TTS.
+    Returns base64-encoded MP3 audio.
+    Falls back to a 204 (no content) if credentials are not configured,
+    so the frontend can gracefully fall back to browser TTS.
+    """
+    credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    api_key          = os.getenv("GOOGLE_TTS_API_KEY", "")
+
+    if not credentials_path and not api_key:
+        # No credentials configured — tell frontend to use browser TTS
+        from fastapi.responses import Response
+        return Response(status_code=204)
+
+    lang_key = (req.language or "en").lower().strip()
+    lang_code, voice_name, gender = _LANG_MAP.get(lang_key, _DEFAULT_LANG)
+
+    # Truncate to 4800 chars to stay well within Google's 5000-char limit per request
+    text = req.text[:4800]
+
+    try:
+        import httpx as _httpx
+
+        payload = {
+            "input":       {"text": text},
+            "voice":       {"languageCode": lang_code, "name": voice_name, "ssmlGender": gender},
+            "audioConfig": {"audioEncoding": "MP3"},
+        }
+
+        if api_key:
+            # Use API key (simpler, no service account needed)
+            url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={api_key}"
+            async with _httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, json=payload)
+        else:
+            # Use service account credentials
+            from google.oauth2 import service_account
+            from google.auth.transport.requests import Request as GRequest
+            import google.auth
+
+            creds = service_account.Credentials.from_service_account_file(
+                credentials_path,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"],
+            )
+            creds.refresh(GRequest())
+            async with _httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    "https://texttospeech.googleapis.com/v1/text:synthesize",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {creds.token}"},
+                )
+
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Google TTS error: {resp.text[:200]}")
+
+        audio_b64 = resp.json().get("audioContent", "")
+        return {"audio_base64": audio_b64, "language": lang_code}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS failed: {str(e)}")
 
 
 # ── Vendor registration ───────────────────────────────────────────────────────

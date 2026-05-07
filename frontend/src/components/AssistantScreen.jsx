@@ -68,6 +68,9 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
   const bottomRef      = useRef(null);
   const recognitionRef = useRef(null);
   const chatInputRef   = useRef(null);
+  const audioRef       = useRef(null);
+
+  const [speakingId, setSpeakingId] = useState(null);
 
   // ── Auto-scroll ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -189,7 +192,52 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
     }
   }
 
-  // ── Reset to idle ─────────────────────────────────────────────────────
+  // ── Text-to-speech (Google Cloud TTS with browser fallback) ─────────
+  const [speakingId, setSpeakingId] = useState(null);
+  const audioRef = useRef(null);
+
+  async function handleListen(msg) {
+    // Stop any currently playing audio
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (speakingId === msg.id) { setSpeakingId(null); stopSpeaking(); return; }
+
+    setSpeakingId(msg.id);
+
+    // Detect language from content (simple heuristic)
+    const text = msg.content || "";
+    const isLuganda = /\b(oli|otya|webale|kale|nnyambye|omutembezi|emmere|essimu)\b/i.test(text);
+    const isSwahili = /\b(habari|asante|sawa|karibu|tafadhali|omutembezi)\b/i.test(text);
+    const language  = isLuganda ? "luganda" : isSwahili ? "swahili" : "english";
+
+    const apiUrl = import.meta.env.VITE_API_URL || "";
+    try {
+      const res = await fetch(`${apiUrl}/api/tts`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ text, language }),
+      });
+
+      if (res.status === 204) {
+        // Backend TTS not configured — fall back to browser TTS
+        speak(text);
+        setSpeakingId(null);
+        return;
+      }
+
+      if (!res.ok) throw new Error("TTS request failed");
+
+      const data = await res.json();
+      const audio = new Audio(`data:audio/mp3;base64,${data.audio_base64}`);
+      audioRef.current = audio;
+      audio.onended = () => { setSpeakingId(null); audioRef.current = null; };
+      audio.onerror = () => { setSpeakingId(null); speak(text); }; // fallback
+      audio.play();
+    } catch {
+      // Any error → fall back to browser TTS
+      speak(text);
+      setSpeakingId(null);
+    }
+  }
   function resetToIdle() {
     if (messages.length > 0) {
       if (!window.confirm("Start a new conversation? This will clear the current chat.")) return;
@@ -270,13 +318,17 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
             </div>
           )}
 
-          {/* Speak button */}
-          {!isUser && isSpeechSupported() && (
+          {/* Listen button — Google Cloud TTS with browser fallback */}
+          {!isUser && (
             <button
-              onClick={() => speak(msg.content)}
-              className="mt-1 text-gray-600 hover:text-[#25D366] text-xs flex items-center gap-1 transition-colors"
+              onClick={() => handleListen(msg)}
+              className={`mt-1 text-xs flex items-center gap-1 transition-colors ${
+                speakingId === msg.id
+                  ? "text-orange-400 animate-pulse"
+                  : "text-gray-600 hover:text-orange-400"
+              }`}
             >
-              🔊 <span>Listen</span>
+              🔊 <span>{speakingId === msg.id ? "Playing…" : "Listen"}</span>
             </button>
           )}
         </div>
