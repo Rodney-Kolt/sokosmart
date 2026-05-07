@@ -14,8 +14,8 @@ from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
 
-from deepseek_utils import (
-    get_gemini_response,   # kept as get_gemini_response for compatibility
+from freeflow_utils import (
+    get_gemini_response,   # multi-provider: Groq → Gemini → DeepSeek
 )
 from db_utils import (
     search_vendors,
