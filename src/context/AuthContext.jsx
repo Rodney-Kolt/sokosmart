@@ -52,44 +52,69 @@ export function AuthProvider({ children }) {
 
   // ── Bootstrap: check session on mount ────────────────────────────────
   useEffect(() => {
+    // Safety timeout — if auth check takes >8s, unblock the UI anyway
+    const safetyTimer = setTimeout(() => {
+      setIsLoading(false);
+      console.warn("[AuthContext] Session check timed out — unblocking UI");
+    }, 8000);
+
     async function bootstrap() {
       try {
-        const { data } = await supabase.auth.getSession();
-        if (data.session) {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("[AuthContext] getSession error:", error.message);
+          // Don't crash — just treat as no session
+        }
+        if (data?.session) {
           setSession(data.session);
           setUser(data.session.user);
           const uid = data.session.user.id;
 
-          // Fetch profile from profiles table
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", uid)
-            .maybeSingle();
-          if (prof) {
-            setProfile(prof);
-            localStorage.setItem("sokoni_display_name", prof.display_name || data.session.user.email?.split("@")[0] || "User");
-            if (prof.role) localStorage.setItem("sokoni_role", prof.role);
+          // Fetch profile — wrapped separately so a DB error doesn't block auth
+          try {
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", uid)
+              .maybeSingle();
+            if (prof) {
+              setProfile(prof);
+              localStorage.setItem("sokoni_display_name",
+                prof.full_name || prof.business_name ||
+                data.session.user.email?.split("@")[0] || "User");
+              if (prof.role) localStorage.setItem("sokoni_role", prof.role);
+            }
+          } catch (profileErr) {
+            console.warn("[AuthContext] Profile fetch failed:", profileErr.message);
           }
 
-          // Sync vendor status if not already set
-          if (!localStorage.getItem("sokoni_vendor_id")) {
-            const { data: vendor } = await supabase
-              .from("vendors")
-              .select("owner_id, name")
-              .eq("owner_id", uid)
-              .maybeSingle();
-            if (vendor) {
-              localStorage.setItem("sokoni_role",         "vendor");
-              localStorage.setItem("sokoni_vendor_id",    uid);
-              localStorage.setItem("sokoni_display_name", vendor.name);
+          // Sync vendor status
+          try {
+            if (!localStorage.getItem("sokoni_vendor_id")) {
+              const { data: vendor } = await supabase
+                .from("vendors")
+                .select("owner_id, name")
+                .eq("owner_id", uid)
+                .maybeSingle();
+              if (vendor) {
+                localStorage.setItem("sokoni_role",         "vendor");
+                localStorage.setItem("sokoni_vendor_id",    uid);
+                localStorage.setItem("sokoni_display_name", vendor.name);
+              }
             }
+          } catch (vendorErr) {
+            console.warn("[AuthContext] Vendor sync failed:", vendorErr.message);
           }
         } else {
+          // No session — check for guest
           const guestId = localStorage.getItem("sokoni_guest_id");
           if (guestId) setIsGuest(true);
         }
-      } catch { /* silent */ } finally {
+      } catch (err) {
+        // Catch-all — never leave the app stuck on loading
+        console.error("[AuthContext] Bootstrap failed:", err.message);
+      } finally {
+        clearTimeout(safetyTimer);
         setIsLoading(false);
       }
     }
