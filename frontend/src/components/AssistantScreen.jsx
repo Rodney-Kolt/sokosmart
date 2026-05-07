@@ -194,7 +194,6 @@ export default function AssistantScreen({ visible, initialMessage, onInitialMess
 
   // ── Text-to-speech (Google Cloud TTS with browser fallback) ─────────
   const [speakingId, setSpeakingId] = useState(null);
-  const audioRef = useRef(null);
 
   async function handleListen(msg) {
     // Stop any currently playing audio
