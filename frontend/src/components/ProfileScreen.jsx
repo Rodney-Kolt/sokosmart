@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../utils/supabaseClient";
-import Onboarding from "./Onboarding";
+import AuthWizard from "./auth/AuthWizard";
 import NotificationsScreen from "./NotificationsScreen";
 import MyListings from "./MyListings";
 import Insights from "./Insights";
@@ -330,13 +330,5 @@ export default function ProfileScreen({ onNavigateDashboard }) {
 }
 
 function OnboardingWrapper({ onClose }) {
-  React.useEffect(() => {
-    const orig = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = function(key, value) {
-      orig(key, value);
-      if (key === "sokoni_role") setTimeout(onClose, 100);
-    };
-    return () => { localStorage.setItem = orig; };
-  }, [onClose]);
-  return <div className="flex-1 overflow-y-auto"><Onboarding /></div>;
+  return <div className="flex-1 overflow-y-auto"><AuthWizard onDone={onClose} /></div>;
 }
