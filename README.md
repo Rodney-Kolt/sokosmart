@@ -178,8 +178,9 @@ Frontend runs at: `http://localhost:3000`
 | `BREVO_SMTP_PASS` | Brevo SMTP key | Brevo → SMTP & API |
 | `BREVO_SENDER_EMAIL` | Verified sender email | Brevo → Senders |
 | `BREVO_SENDER_NAME` | Sender display name | e.g. `Sokoni Smart` |
-| `AFRICALA_API_TOKEN` | Africala SMS API token | africala.com → API Settings |
-| `AFRICALA_SENDER_ID` | SMS sender name | e.g. `SOKONI` |
+| `MESSAGECENTRAL_API_KEY` | MessageCentral CPaaS API key | cpaas.messagecentral.com → API Settings |
+| `MESSAGECENTRAL_CUSTOMER_ID` | MessageCentral customer ID | cpaas.messagecentral.com → Account |
+| `MESSAGECENTRAL_SENDER_ID` | SMS sender name (optional) | e.g. `SOKONI` — omit until approved |
 | `SMS_HOOK_SECRET` | Shared secret for Supabase hook | Generate any random string |
 | `RENDER_EXTERNAL_URL` | Your Render backend URL | Render dashboard |
 
@@ -223,8 +224,9 @@ Add these in your Render service → **Environment**:
 
 | Key | Value |
 |---|---|
-| `AFRICALA_API_TOKEN` | Your Africala API token |
-| `AFRICALA_SENDER_ID` | `SOKONI` |
+| `MESSAGECENTRAL_API_KEY` | Your MessageCentral CPaaS API key |
+| `MESSAGECENTRAL_CUSTOMER_ID` | Your MessageCentral customer ID |
+| `MESSAGECENTRAL_SENDER_ID` | `SOKONI` (optional — omit until alphanumeric sender approved) |
 | `SMS_HOOK_SECRET` | Same secret you set in Supabase hook |
 | `RENDER_EXTERNAL_URL` | `https://your-backend.onrender.com` |
 

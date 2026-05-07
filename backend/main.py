@@ -179,7 +179,7 @@ class OTPVerify(BaseModel):
 _otp_store: dict = {}
 
 
-# ── Africala SMS Hook ─────────────────────────────────────────────────────────
+# ── MessageCentral CPaaS SMS Hook ────────────────────────────────────────────
 
 @app.post("/send-sms-hook")
 async def send_sms_hook(
@@ -189,7 +189,7 @@ async def send_sms_hook(
     """
     Supabase 'Send SMS' hook endpoint.
     Supabase calls this when a phone OTP needs to be delivered.
-    We forward the SMS to Africala's API.
+    We forward the SMS to MessageCentral CPaaS REST API.
     """
     # ── Verify shared secret ──────────────────────────────────────────────
     hook_secret = os.getenv("SMS_HOOK_SECRET", "")
@@ -210,40 +210,52 @@ async def send_sms_hook(
     if not phone or not otp:
         raise HTTPException(status_code=400, detail="Missing phone or otp in payload")
 
-    # ── Send via Africala ─────────────────────────────────────────────────
-    api_token   = os.getenv("AFRICALA_API_TOKEN", "")
-    sender_id   = os.getenv("AFRICALA_SENDER_ID", "SOKONI")
+    # ── Send via MessageCentral CPaaS ─────────────────────────────────────
+    api_key     = os.getenv("MESSAGECENTRAL_API_KEY", "")
+    customer_id = os.getenv("MESSAGECENTRAL_CUSTOMER_ID", "")
     backend_url = os.getenv("RENDER_EXTERNAL_URL", "https://your-backend.onrender.com")
 
-    if not api_token:
-        raise HTTPException(status_code=500, detail="AFRICALA_API_TOKEN not configured")
+    if not api_key or not customer_id:
+        raise HTTPException(
+            status_code=500,
+            detail="MESSAGECENTRAL_API_KEY and MESSAGECENTRAL_CUSTOMER_ID must be set"
+        )
 
-    sms_payload = [{
-        "apiToken":        api_token,
-        "messageType":     "1",
-        "messageEncoding": "1",
-        "destinationAddress": phone,
-        "sourceAddress":   sender_id,
-        "messageText":     f"Sokoni Smart: Your verification code is {otp}. Valid for 10 minutes.",
-        "callBackUrl":     f"{backend_url}/sms-webhook",
-        "userReferenceId": phone,
-    }]
+    sms_body = {
+        "customerId": customer_id,
+        "to":         phone,
+        "text":       f"Sokoni Smart: Your verification code is {otp}. Valid for 10 minutes.",
+        "dlrUrl":     f"{backend_url}/sms-webhook",
+    }
+
+    # Only include "from" if a sender ID is configured — omit for shared shortcode
+    sender_id = os.getenv("MESSAGECENTRAL_SENDER_ID", "")
+    if sender_id:
+        sms_body["from"] = sender_id
 
     import httpx
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                "https://api2.smsala.com/SendSmsV2",
-                json=sms_payload,
-                headers={"Content-Type": "application/json"},
+                "https://cpaas.messagecentral.com/rest/v2/send-sms",
+                json=sms_body,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key":    api_key,
+                },
             )
         if resp.status_code != 200:
+            print(f"[SMS Hook] MessageCentral error {resp.status_code}: {resp.text}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Africala API error {resp.status_code}: {resp.text}"
+                detail=f"MessageCentral API error {resp.status_code}: {resp.text}"
             )
+        print(f"[SMS Hook] Sent to {phone}: {resp.text}")
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"SMS delivery failed: {str(e)}")
+
+    # Supabase expects an empty 200 response
+    return {}
 
     # Supabase expects an empty 200 response
     return {}
@@ -252,7 +264,7 @@ async def send_sms_hook(
 @app.post("/sms-webhook")
 async def sms_delivery_webhook(request: Request):
     """
-    Africala delivery receipt callback.
+    MessageCentral delivery receipt callback.
     Logs the delivery status — extend this to store in DB if needed.
     """
     try:
