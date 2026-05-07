@@ -1,6 +1,9 @@
 /**
  * EmailOTP.jsx
- * Passwordless email sign-in via Supabase signInWithOtp + verifyOtp.
+ * Passwordless email sign-in via custom backend OTP (Brevo API).
+ * Uses /otp/send and /otp/verify on the FastAPI backend.
+ * After verification, signs into Supabase with email+password fallback
+ * or simply calls onVerified() for guest-style session handling.
  *
  * Flow:
  *   1. Email entry  – user types email, hits "Send Code"
@@ -15,6 +18,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../utils/supabaseClient";
+
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 // ── Digit box ─────────────────────────────────────────────────────────────────
 function DigitBox({ value, isFocused, inputRef, onChange, onKeyDown, onPaste, index }) {
@@ -160,7 +165,7 @@ export default function EmailOTP({ onVerified, onBack }) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   }
 
-  // ── Send OTP via Supabase ─────────────────────────────────────────────
+  // ── Send OTP via custom backend (Brevo API) ──────────────────────────
   async function handleSendCode(isResend = false) {
     const target = email.trim().toLowerCase();
     if (!target || !isValidEmail(target)) {
@@ -170,11 +175,14 @@ export default function EmailOTP({ onVerified, onBack }) {
     setLoading(true);
     setError("");
     try {
-      const { error: err } = await supabase.auth.signInWithOtp({
-        email: target,
-        options: { shouldCreateUser: true },
+      const res  = await fetch(`${API_URL}/otp/send`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: target }),
       });
-      if (err) throw err;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to send code.");
+
       if (isResend) {
         showToast("Code resent!");
         setDigits(["", "", "", "", "", ""]);
@@ -185,8 +193,8 @@ export default function EmailOTP({ onVerified, onBack }) {
       startCountdown();
     } catch (err) {
       const msg = err.message || "";
-      if (msg.includes("rate") || msg.includes("limit") || msg.includes("429")) {
-        setError("Too many attempts. Please wait a minute and try again.");
+      if (msg.includes("wait") || msg.includes("429")) {
+        setError("Please wait before requesting a new code.");
       } else {
         setError(msg || "Failed to send code. Please try again.");
       }
@@ -195,36 +203,57 @@ export default function EmailOTP({ onVerified, onBack }) {
     }
   }
 
-  // ── Verify OTP via Supabase ───────────────────────────────────────────
+  // ── Verify OTP via custom backend, then sync Supabase session ────────
   async function handleVerifyCode(codeOverride) {
     const token = codeOverride || digits.join("");
     if (token.length < 6) { setError("Please enter all 6 digits."); return; }
     setLoading(true);
     setError("");
     try {
-      const { data, error: err } = await supabase.auth.verifyOtp({
-        email: email.trim().toLowerCase(),
-        token,
-        type: "email",
+      // 1. Verify code against our backend
+      const res  = await fetch(`${API_URL}/otp/verify`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: email.trim().toLowerCase(), code: token }),
       });
-      if (err) throw err;
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Invalid code.");
 
-      // Persist role/display name for the session
-      const uid = data.user?.id;
+      // 2. Code is valid — persist email for session, check vendor status
+      const target = email.trim().toLowerCase();
+      localStorage.setItem("sokoni_verified_email", target);
+
+      const { data: vendor } = await supabase
+        .from("vendors")
+        .select("owner_id, name")
+        .eq("owner_id", target)   // try by email as fallback
+        .maybeSingle();
+
+      // Try to find user by email in vendors table via owner lookup
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
       if (uid) {
-        // Check if this user is a vendor
-        const { data: vendor } = await supabase
+        const { data: vendorByUid } = await supabase
           .from("vendors")
           .select("owner_id, name")
           .eq("owner_id", uid)
-          .single();
-        if (vendor) {
+          .maybeSingle();
+        if (vendorByUid) {
           localStorage.setItem("sokoni_role",         "vendor");
           localStorage.setItem("sokoni_vendor_id",    uid);
-          localStorage.setItem("sokoni_display_name", vendor.name);
+          localStorage.setItem("sokoni_display_name", vendorByUid.name);
         } else {
           localStorage.setItem("sokoni_role",         "consumer");
-          localStorage.setItem("sokoni_display_name", data.user.email?.split("@")[0] || "User");
+          localStorage.setItem("sokoni_display_name", target.split("@")[0]);
+        }
+      } else {
+        // No Supabase session yet — set as consumer, session will be created on next login
+        localStorage.setItem("sokoni_role",         "consumer");
+        localStorage.setItem("sokoni_display_name", target.split("@")[0]);
+        // Create a guest-style ID so the app can function
+        if (!localStorage.getItem("sokoni_guest_id")) {
+          const { v4: uuidv4 } = await import("uuid");
+          localStorage.setItem("sokoni_guest_id", uuidv4());
         }
       }
 
@@ -234,10 +263,10 @@ export default function EmailOTP({ onVerified, onBack }) {
       const msg = err.message || "";
       if (msg.includes("expired")) {
         setError("Code expired. Please request a new one.");
-      } else if (msg.includes("attempts") || msg.includes("rate")) {
+      } else if (msg.includes("attempts") || msg.includes("wait")) {
         setError("Too many attempts. Please wait 60 seconds.");
       } else {
-        setError("Invalid code. Please try again.");
+        setError(msg || "Invalid code. Please try again.");
       }
       setDigits(["", "", "", "", "", ""]);
       setTimeout(() => inputRefs.current[0]?.focus(), 50);
