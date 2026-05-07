@@ -14,14 +14,6 @@
     <!-- PWA manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <!-- Register service worker – required for PWABuilder detection -->
-    <script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", function () {
-          navigator.serviceWorker.register("/sw.js");
-        });
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>
