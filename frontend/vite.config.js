@@ -3,13 +3,13 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  base: "/",
   plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: null,       // we register manually in index.html
+      injectRegister: null,
       strategies: "generateSW",
-      // Include all assets in the precache
       includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "screenshot-mobile.png", "screenshot-wide.png", "offline.html"],
       manifest: {
         name: "Sokoni Chat",
@@ -20,8 +20,8 @@ export default defineConfig({
         display: "standalone",
         orientation: "portrait",
         start_url: "/",
-        id: "/",          // stable app identity — never change this
-        prefer_related_applications: false,  // always prefer the PWA over any native app
+        id: "/",
+        prefer_related_applications: false,
         scope: "/",
         lang: "en-UG",
         dir: "ltr",
@@ -29,87 +29,37 @@ export default defineConfig({
         display_override: ["window-controls-overlay", "standalone", "minimal-ui"],
         categories: ["shopping", "social", "utilities"],
         icons: [
-          {
-            src: "/icon-192.png",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "any maskable",
-          },
-          {
-            src: "/icon-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any maskable",
-          },
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
         ],
         screenshots: [
-          {
-            src: "/screenshot-mobile.png",
-            sizes: "390x844",
-            type: "image/png",
-            form_factor: "narrow",
-            label: "Sokoni Chat – hyperlocal marketplace",
-          },
-          {
-            src: "/screenshot-wide.png",
-            sizes: "1280x800",
-            type: "image/png",
-            form_factor: "wide",
-            label: "Sokoni Chat – desktop view",
-          },
+          { src: "/screenshot-mobile.png", sizes: "390x844", type: "image/png", form_factor: "narrow", label: "Sokoni Chat – hyperlocal marketplace" },
+          { src: "/screenshot-wide.png", sizes: "1280x800", type: "image/png", form_factor: "wide", label: "Sokoni Chat – desktop view" },
         ],
         shortcuts: [
-          {
-            name: "Open Assistant",
-            short_name: "Assistant",
-            description: "Ask Sokoni AI for help",
-            url: "/?tab=assistant",
-            icons: [{ src: "/icon-192.png", sizes: "192x192" }],
-          },
-          {
-            name: "Browse Market",
-            short_name: "Market",
-            description: "Browse local vendors",
-            url: "/?tab=market",
-            icons: [{ src: "/icon-192.png", sizes: "192x192" }],
-          },
+          { name: "Open Assistant", short_name: "Assistant", description: "Ask Sokoni AI for help", url: "/?tab=assistant", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+          { name: "Browse Market", short_name: "Market", description: "Browse local vendors", url: "/?tab=market", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
         ],
       },
       workbox: {
-        // Bump this version to force all clients to get the new SW immediately
         additionalManifestEntries: [],
-        // Serve offline.html when navigation fails (no network + not cached)
-        navigateFallback: "/offline.html",
-        navigateFallbackDenylist: [/^\/api/, /^\/health/, /^\/error/, /^\/welcome/, /^\/reset-password/],
-        // Cache strategies
+        // Only use offline fallback for actual navigation failures — NOT for the app shell
+        navigateFallback: null,
         runtimeCaching: [
           {
-            // Cache Supabase API calls for 1 hour
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: "NetworkFirst",
-            options: {
-              cacheName: "supabase-cache",
-              expiration: { maxEntries: 50, maxAgeSeconds: 3600 },
-            },
+            options: { cacheName: "supabase-cache", expiration: { maxEntries: 50, maxAgeSeconds: 3600 } },
           },
           {
-            // Cache backend API calls for 5 minutes
             urlPattern: /^https:\/\/sokosmart.*\.onrender\.com\/.*/i,
             handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              expiration: { maxEntries: 30, maxAgeSeconds: 300 },
-              networkTimeoutSeconds: 10,
-            },
+            options: { cacheName: "api-cache", expiration: { maxEntries: 30, maxAgeSeconds: 300 }, networkTimeoutSeconds: 10 },
           },
           {
-            // Cache Google Fonts
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts-cache",
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
+            options: { cacheName: "google-fonts-cache", expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 } },
           },
         ],
       },
@@ -119,7 +69,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       "/api": {
-        target: process.env.VITE_API_URL || "http://localhost:8000",
+        target: "http://localhost:8000",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
