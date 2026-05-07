@@ -53,11 +53,18 @@ function Avatar({ name, size = "lg", isOnline = false }) {
 }
 
 export default function ProfileScreen({ onNavigateDashboard }) {
-  const { user, signOutAll } = useAuth();
-  const role        = localStorage.getItem("sokoni_role");
-  const displayName = localStorage.getItem("sokoni_display_name") || "Guest";
+  const { user, signOutAll, profile } = useAuth();
+
+  // Prefer profile from AuthContext (persisted), fall back to localStorage
+  const role        = profile?.role        || localStorage.getItem("sokoni_role");
+  const displayName = profile?.full_name   || profile?.business_name
+                   || localStorage.getItem("sokoni_display_name") || "Guest";
+  const avatarEmoji = profile?.avatar_emoji || (role === "vendor" ? "🏪" : "🧑");
   const vendorId    = localStorage.getItem("sokoni_vendor_id");
-  const userId      = localStorage.getItem("sokoni_guest_id") || vendorId || "";
+  const userId      = user?.id || localStorage.getItem("sokoni_guest_id") || vendorId || "";
+
+  // Profile completeness check
+  const profileIncomplete = user && !profile?.full_name && !profile?.business_name;
 
   const [view, setView]                 = useState("my");
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -199,25 +206,45 @@ export default function ProfileScreen({ onNavigateDashboard }) {
           </div>
         )}
 
+        {/* ── Complete profile banner ────────────────────────────────── */}
+        {profileIncomplete && (
+          <div className="bg-orange-900/20 border border-orange-500/30 rounded-2xl p-4 flex items-center gap-3">
+            <span className="text-2xl">✏️</span>
+            <div className="flex-1">
+              <p className="text-orange-300 font-semibold text-sm">Complete your profile</p>
+              <p className="text-orange-200/60 text-xs mt-0.5">Add your name and details so vendors know who you are.</p>
+            </div>
+            <button
+              onClick={() => setShowOnboarding(true)}
+              className="text-orange-400 text-xs font-bold hover:underline whitespace-nowrap"
+            >
+              Set up →
+            </button>
+          </div>
+        )}
+
         {/* ── Avatar + name ─────────────────────────────────────────── */}
         <div className="flex items-center gap-4">
-          <Avatar name={displayName} size="lg" isOnline={role === "vendor"} />
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-4xl shadow-lg shadow-orange-500/20 flex-shrink-0">
+            {avatarEmoji}
+          </div>
           <div className="flex-1">
             <p className="text-white font-bold text-lg leading-tight">{displayName}</p>
-            <div className="flex items-center gap-2 mt-1">
+            {profile?.business_category && (
+              <p className="text-slate-400 text-xs mt-0.5 capitalize">{profile.business_category}</p>
+            )}
+            {profile?.location && (
+              <p className="text-slate-500 text-xs mt-0.5">📍 {profile.location}</p>
+            )}
+            <div className="flex items-center gap-2 mt-1.5">
               {role === "vendor" && (
-                <span className="inline-flex items-center gap-1 bg-[#25D366]/10 text-[#25D366] text-xs px-2 py-0.5 rounded-full border border-[#25D366]/30">
+                <span className="inline-flex items-center gap-1 bg-violet-500/10 text-violet-400 text-xs px-2 py-0.5 rounded-full border border-violet-500/30">
                   🏪 Vendor
                 </span>
               )}
               {role === "consumer" && (
-                <span className="inline-flex items-center gap-1 bg-gray-700/50 text-gray-400 text-xs px-2 py-0.5 rounded-full border border-gray-600/30">
-                  👤 Consumer
-                </span>
-              )}
-              {localStorage.getItem("sokoni_lat") && (
-                <span className="inline-flex items-center gap-1 bg-blue-900/30 text-blue-400 text-xs px-2 py-0.5 rounded-full border border-blue-700/30">
-                  📍 Verified Neighbour
+                <span className="inline-flex items-center gap-1 bg-orange-500/10 text-orange-400 text-xs px-2 py-0.5 rounded-full border border-orange-500/30">
+                  🛒 Customer
                 </span>
               )}
             </div>

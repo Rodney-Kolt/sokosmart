@@ -233,3 +233,44 @@ DROP TRIGGER IF EXISTS listings_updated_at ON vendor_listings;
 CREATE TRIGGER listings_updated_at
   BEFORE UPDATE ON vendor_listings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ── profiles ─────────────────────────────────────────────────────────────────
+-- One row per user. Persists across logins.
+-- id = auth.users.id (same UUID)
+CREATE TABLE IF NOT EXISTS profiles (
+  id                   UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name            TEXT,
+  phone                TEXT,
+  role                 TEXT CHECK (role IN ('consumer', 'vendor')) DEFAULT 'consumer',
+  avatar_emoji         TEXT DEFAULT '🧑',
+  avatar_url           TEXT,
+  business_name        TEXT,
+  business_category    TEXT,
+  business_description TEXT,
+  location             TEXT,
+  cover_image_url      TEXT,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast lookups
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles (role);
+
+-- Enable Row Level Security
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Users can read their own profile
+CREATE POLICY "profiles_select_own" ON profiles
+  FOR SELECT USING (auth.uid() = id);
+
+-- Users can insert their own profile
+CREATE POLICY "profiles_insert_own" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Users can update their own profile
+CREATE POLICY "profiles_update_own" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+-- Service role bypasses RLS (used by backend)
+-- (No policy needed — service role key bypasses RLS automatically)

@@ -209,6 +209,7 @@ export function AuthProvider({ children }) {
       session,
       user,
       profile,
+      setProfile,
       isGuest,
       isLoading,
       isAuthenticated: !!session,

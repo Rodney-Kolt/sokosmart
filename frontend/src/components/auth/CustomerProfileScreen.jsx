@@ -1,22 +1,26 @@
 /**
  * CustomerProfileScreen.jsx
- * Step 4a: collect customer name + phone, save to Supabase profiles table.
+ * Step 4a: collect customer name + phone, upsert to profiles table.
+ * Uses full_name (consistent with schema) and updates AuthContext profile.
  */
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../../utils/supabaseClient";
+import { useAuth } from "../../context/AuthContext";
 
 const inputCls = "w-full bg-[#0A0E14] border border-slate-800 text-white rounded-2xl px-4 py-3.5 text-sm placeholder-slate-600 focus:outline-none focus:border-orange-500/60 focus:ring-2 focus:ring-orange-500/20 transition-all";
 
 const AVATARS = ["🧑", "👩", "👨", "🧒", "👴", "👵", "🧔", "👩‍💼", "👨‍💼", "🧑‍🌾"];
 
 export default function CustomerProfileScreen({ onDone, onBack }) {
-  const [name,      setName]      = useState("");
-  const [phone,     setPhone]     = useState("");
-  const [avatar,    setAvatar]    = useState("🧑");
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
+  const { setProfile } = useAuth();
+
+  const [name,    setName]    = useState("");
+  const [phone,   setPhone]   = useState("");
+  const [avatar,  setAvatar]  = useState("🧑");
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
 
   async function handleFinish() {
     if (!name.trim()) { setError("Please enter your name."); return; }
@@ -24,23 +28,27 @@ export default function CustomerProfileScreen({ onDone, onBack }) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
+      if (!uid) throw new Error("Not signed in. Please try again.");
 
-      if (uid) {
-        // Upsert into profiles table
-        const { error: dbErr } = await supabase.from("profiles").upsert({
-          id:           uid,
-          display_name: name.trim(),
-          phone:        phone.trim() || null,
-          avatar_emoji: avatar,
-          role:         "consumer",
-          updated_at:   new Date().toISOString(),
-        });
-        if (dbErr) console.warn("Profile save:", dbErr.message);
-      }
+      const profileData = {
+        id:           uid,
+        full_name:    name.trim(),
+        phone:        phone.trim() || null,
+        avatar_emoji: avatar,
+        role:         "consumer",
+        updated_at:   new Date().toISOString(),
+      };
 
+      const { error: dbErr } = await supabase.from("profiles").upsert(profileData);
+      if (dbErr) throw new Error(dbErr.message);
+
+      // Update AuthContext so profile is available immediately
+      setProfile?.(profileData);
+
+      // Sync localStorage
       localStorage.setItem("sokoni_role",         "consumer");
       localStorage.setItem("sokoni_display_name", name.trim());
-      if (uid) localStorage.setItem("sokoni_guest_id", uid);
+      localStorage.setItem("sokoni_guest_id",     uid);
 
       onDone();
     } catch (err) {
@@ -85,8 +93,8 @@ export default function CustomerProfileScreen({ onDone, onBack }) {
         <div className="space-y-3">
           <div>
             <label className="sr-only" htmlFor="cust-name">Full name</label>
-            <input id="cust-name" className={inputCls} placeholder="Full name" value={name}
-              onChange={(e) => { setName(e.target.value); setError(""); }} autoFocus />
+            <input id="cust-name" className={inputCls} placeholder="Full name"
+              value={name} onChange={(e) => { setName(e.target.value); setError(""); }} autoFocus />
           </div>
 
           <div className="flex gap-2">
@@ -101,7 +109,10 @@ export default function CustomerProfileScreen({ onDone, onBack }) {
           </div>
 
           <AnimatePresence>
-            {error && <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-red-400 text-sm">{error}</motion.p>}
+            {error && (
+              <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="text-red-400 text-sm">{error}</motion.p>
+            )}
           </AnimatePresence>
 
           <button onClick={handleFinish} disabled={loading || !name.trim()}
