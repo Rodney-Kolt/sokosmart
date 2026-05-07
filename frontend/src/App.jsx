@@ -25,6 +25,7 @@ import ResetPasswordPage from "./components/ResetPasswordPage";
 import Onboarding        from "./components/Onboarding";
 import SignUpPromptModal from "./components/SignUpPromptModal";
 import OTPModal          from "./components/OTPModal";
+import AuthWizard        from "./components/auth/AuthWizard";
 import ErrorDashboard   from "./components/ErrorDashboard";
 import { getUnreadCount, getNotificationCount, subscribeToNotifications } from "./utils/api";
 
@@ -100,7 +101,7 @@ function MainShell() {
   if (showOnboard) {
     return (
       <div className="flex flex-col h-full bg-[#0A0E14]">
-        <Onboarding onDone={() => setShowOnboard(false)} />
+        <AuthWizard onDone={() => setShowOnboard(false)} />
       </div>
     );
   }
@@ -186,7 +187,7 @@ function InnerApp() {
               {/* Main app */}
               <Route path="/*" element={
                 showOnboard
-                  ? <Onboarding onDone={() => setShowOnboard(false)} />
+                  ? <AuthWizard onDone={() => setShowOnboard(false)} />
                   : <MainShell />
               } />
             </Routes>
