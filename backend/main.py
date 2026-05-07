@@ -11,7 +11,7 @@ import smtplib
 import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -177,6 +177,90 @@ class OTPVerify(BaseModel):
 # ── In-memory OTP store ───────────────────────────────────────────────────────
 # { email: { code, expires_at, attempts } }
 _otp_store: dict = {}
+
+
+# ── Africala SMS Hook ─────────────────────────────────────────────────────────
+
+@app.post("/send-sms-hook")
+async def send_sms_hook(
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Supabase 'Send SMS' hook endpoint.
+    Supabase calls this when a phone OTP needs to be delivered.
+    We forward the SMS to Africala's API.
+    """
+    # ── Verify shared secret ──────────────────────────────────────────────
+    hook_secret = os.getenv("SMS_HOOK_SECRET", "")
+    if hook_secret:
+        expected = f"Bearer {hook_secret}"
+        if not authorization or authorization != expected:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # ── Parse Supabase payload ────────────────────────────────────────────
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    phone = payload.get("user", {}).get("phone", "")
+    otp   = payload.get("sms",  {}).get("otp",   "")
+
+    if not phone or not otp:
+        raise HTTPException(status_code=400, detail="Missing phone or otp in payload")
+
+    # ── Send via Africala ─────────────────────────────────────────────────
+    api_token   = os.getenv("AFRICALA_API_TOKEN", "")
+    sender_id   = os.getenv("AFRICALA_SENDER_ID", "SOKONI")
+    backend_url = os.getenv("RENDER_EXTERNAL_URL", "https://your-backend.onrender.com")
+
+    if not api_token:
+        raise HTTPException(status_code=500, detail="AFRICALA_API_TOKEN not configured")
+
+    sms_payload = [{
+        "apiToken":        api_token,
+        "messageType":     "1",
+        "messageEncoding": "1",
+        "destinationAddress": phone,
+        "sourceAddress":   sender_id,
+        "messageText":     f"Sokoni Smart: Your verification code is {otp}. Valid for 10 minutes.",
+        "callBackUrl":     f"{backend_url}/sms-webhook",
+        "userReferenceId": phone,
+    }]
+
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://api2.smsala.com/SendSmsV2",
+                json=sms_payload,
+                headers={"Content-Type": "application/json"},
+            )
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Africala API error {resp.status_code}: {resp.text}"
+            )
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"SMS delivery failed: {str(e)}")
+
+    # Supabase expects an empty 200 response
+    return {}
+
+
+@app.post("/sms-webhook")
+async def sms_delivery_webhook(request: Request):
+    """
+    Africala delivery receipt callback.
+    Logs the delivery status — extend this to store in DB if needed.
+    """
+    try:
+        data = await request.json()
+        print(f"[SMS Webhook] Delivery receipt: {data}")
+    except Exception:
+        pass
+    return {"received": True}
 
 
 # ── OTP: Email verification ───────────────────────────────────────────────────

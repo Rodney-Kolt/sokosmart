@@ -172,6 +172,16 @@ Frontend runs at: `http://localhost:3000`
 | `SUPABASE_URL` | Supabase project URL | Project Settings → API |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (secret!) | Project Settings → API |
 | `ALLOWED_ORIGINS` | Comma-separated allowed CORS origins | Your Vercel URL |
+| `BREVO_SMTP_HOST` | Brevo SMTP host | `smtp-relay.brevo.com` |
+| `BREVO_SMTP_PORT` | Brevo SMTP port | `587` |
+| `BREVO_SMTP_USER` | Brevo login email | Brevo → SMTP & API |
+| `BREVO_SMTP_PASS` | Brevo SMTP key | Brevo → SMTP & API |
+| `BREVO_SENDER_EMAIL` | Verified sender email | Brevo → Senders |
+| `BREVO_SENDER_NAME` | Sender display name | e.g. `Sokoni Smart` |
+| `AFRICALA_API_TOKEN` | Africala SMS API token | africala.com → API Settings |
+| `AFRICALA_SENDER_ID` | SMS sender name | e.g. `SOKONI` |
+| `SMS_HOOK_SECRET` | Shared secret for Supabase hook | Generate any random string |
+| `RENDER_EXTERNAL_URL` | Your Render backend URL | Render dashboard |
 
 ### Frontend (`.env`)
 
@@ -180,6 +190,43 @@ Frontend runs at: `http://localhost:3000`
 | `VITE_API_URL` | Backend URL | Your Render URL |
 | `VITE_SUPABASE_URL` | Supabase project URL | Project Settings → API |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon (public) key | Project Settings → API |
+
+---
+
+## 📱 Phone OTP Setup (Africala + Supabase Hook)
+
+Sokoni Smart supports phone number verification for Uganda (+256) via Africala SMS, routed through a Supabase Auth Hook.
+
+### 1. Enable Phone Auth in Supabase
+
+1. Go to **Authentication → Providers → Phone**
+2. Toggle **Enable Phone provider** on
+3. Set **OTP Expiry** to `600` (10 minutes)
+4. Save
+
+### 2. Configure the Send SMS Hook
+
+1. Go to **Authentication → Hooks**
+2. Click **Add hook** → choose **Send SMS**
+3. Set the endpoint to: `https://your-backend.onrender.com/send-sms-hook`
+4. Set the **HTTP Headers**: `Authorization: Bearer your_SMS_HOOK_SECRET`
+5. Save
+
+### 3. Add Redirect URL
+
+1. Go to **Authentication → URL Configuration**
+2. Add `https://sokosmart-two.vercel.app/**` to **Redirect URLs**
+
+### 4. Add Environment Variables to Render
+
+Add these in your Render service → **Environment**:
+
+| Key | Value |
+|---|---|
+| `AFRICALA_API_TOKEN` | Your Africala API token |
+| `AFRICALA_SENDER_ID` | `SOKONI` |
+| `SMS_HOOK_SECRET` | Same secret you set in Supabase hook |
+| `RENDER_EXTERNAL_URL` | `https://your-backend.onrender.com` |
 
 ---
 
